@@ -1,0 +1,51 @@
+# F-Khotiyan Backend .gitignore
+
+# Environment and secrets
+.env
+.env.local
+.env.production
+
+# Python
+*.pyc
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+*.so
+.venv/
+venv/
+ENV/
+env/
+
+# Django
+*.log
+db.sqlite3
+db.sqlite3-journal
+/staticfiles/
+/media/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Flutter app (in separate repo or PC only)
+f_khotiyan_app/
+flutter/
+
+# Docs (optional - include if you want)
+# *.md
+
+# Node
+node_modules/
+
+# Backups
+*.bak
+*.backup
+backup-*.tar.gz

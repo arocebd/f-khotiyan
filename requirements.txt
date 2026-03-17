@@ -1,0 +1,77 @@
+# F-Khotiyan SaaS Application - Python Dependencies
+# Django Backend Requirements
+# Created: March 10, 2026
+
+# Core Framework
+Django==4.2.9
+djangorestframework==3.14.0
+djangorestframework-simplejwt==5.3.1
+
+# Database
+mysqlclient==2.2.1  # MariaDB/MySQL driver for Django
+PyMySQL==1.1.0      # Alternative MySQL driver
+
+# CORS Headers for API
+django-cors-headers==4.3.1
+
+# Environment Variables
+python-decouple==3.8
+python-dotenv==1.0.0
+
+# Image Processing
+Pillow==10.2.0
+
+# Google Gemini AI
+google-genai==1.67.0
+
+# Date & Time
+pytz==2023.3
+python-dateutil==2.8.2
+
+# API Documentation
+drf-yasg==1.21.7    # Swagger/OpenAPI documentation
+
+# Security & Authentication
+cryptography==41.0.7
+PyJWT==2.8.0
+
+# Payment Integration
+requests==2.31.0    # For bKash and other API calls
+httpx>=0.28.1       # Modern HTTP client (compatible with google-genai)
+
+# SMS Integration
+# Add your SMS provider SDK here
+
+# Utilities
+django-phonenumber-field==7.2.0
+phonenumbers==8.13.26
+qrcode==7.4.2       # QR Code generation
+
+# Production Server
+gunicorn==21.2.0    # WSGI HTTP Server
+uvicorn==0.25.0     # ASGI server (if using async)
+
+# Monitoring & Logging
+django-debug-toolbar==4.2.0  # Development only
+
+# Task Queue (Optional for background jobs)
+celery==5.3.4
+redis==5.0.1
+
+# Excel/CSV Export
+openpyxl==3.1.2
+pandas==2.1.4
+
+# PDF Generation
+reportlab==4.0.7
+WeasyPrint==60.1    # HTML to PDF
+
+# Testing
+pytest==7.4.3
+pytest-django==4.7.0
+factory-boy==3.3.0
+
+# Code Quality
+black==23.12.1
+flake8==7.0.0
+isort==5.13.2
