@@ -14,7 +14,6 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
   List<dynamic> _returns = [];
   bool _loading = true;
   String? _statusFilter;
-  String? _debugInfo;
 
   static const _statuses = [
     {'value': '', 'label': 'সব'},
@@ -43,45 +42,19 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
   }
 
   Future<void> _load() async {
-    print('DEBUG: Starting _load()');
-    setState(() {
-      _loading = true;
-      _debugInfo = 'Loading...';
-    });
+    if (mounted) setState(() => _loading = true);
     try {
-      print('DEBUG: Getting token...');
-      final token = _token();
-      print('DEBUG: Token length: ${token.length}');
-
-      setState(() => _debugInfo = 'Calling API...');
-      print('DEBUG: Calling API...');
-      final res = await _api.getReturns(token);
-      print('DEBUG: API response: $res');
-      print('DEBUG: Response type: ${res.runtimeType}');
-      print('DEBUG: Response keys: ${res.keys}');
-
-      setState(() => _debugInfo = 'Got response: ${res.keys.toList()}');
+      final res = await _api.getReturns(_token());
       final list = res['results'] ?? res ?? [];
-      print('DEBUG: List extracted: $list');
-      print('DEBUG: List type: ${list.runtimeType}');
-      print('DEBUG: List length: ${list is List ? list.length : 'NOT A LIST'}');
-
-      setState(() {
-        _returns = list is List ? list : [];
-        _debugInfo = 'Loaded ${_returns.length} returns from API';
-      });
-      print('DEBUG: Loaded ${_returns.length} returns');
-      print('DEBUG: _loading = false');
-    } catch (e, stackTrace) {
-      print('DEBUG: Error loading returns: $e');
-      print('DEBUG: StackTrace: $stackTrace');
-      setState(() => _debugInfo = 'Error: $e');
+      if (mounted) {
+        setState(() => _returns = list is List ? list : []);
+      }
+    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
               content: Text('লোড করতে সমস্যা: $e'),
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 10)),
+              backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -291,15 +264,17 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
                                   : double.parse(refundCtrl.text.trim()),
                             });
                             if (ctx.mounted) Navigator.pop(ctx);
-                            _load();
+                            await _load();
                           } catch (e) {
-                            if (ctx.mounted) {
-                              ScaffoldMessenger.of(ctx).showSnackBar(
-                                  SnackBar(content: Text('ত্রুটি: $e')));
-                            }
-                          } finally {
                             setModal(() => saving = false);
+                            if (ctx.mounted) {
+                              ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
+                                  content: Text('ত্রুটি: $e'),
+                                  backgroundColor: Colors.red));
+                            }
+                            return;
                           }
+                          setModal(() => saving = false);
                         },
                   child: saving
                       ? const CircularProgressIndicator(color: Colors.white)
@@ -350,8 +325,6 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    print(
-        'DEBUG: build() called - _loading: $_loading, _returns.length: ${_returns.length}, _filtered.length: ${_filtered.length}');
     return Scaffold(
       appBar: AppBar(
         title: const Text('রিটার্ন ব্যবস্থাপনা'),
@@ -361,14 +334,6 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
       ),
       body: Column(
         children: [
-          if (_debugInfo != null)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(8),
-              color: Colors.yellow.shade200,
-              child: Text('DEBUG: $_debugInfo',
-                  style: const TextStyle(fontSize: 10)),
-            ),
           SizedBox(
             height: 48,
             child: ListView.separated(
@@ -404,7 +369,7 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
                         color: Theme.of(context)
                             .colorScheme
                             .onSurface
-                            .withOpacity(0.3)),
+                            .withValues(alpha: 0.3)),
                     const SizedBox(height: 12),
                     const Text('কোনো রিটার্ন পাওয়া যায়নি'),
                   ],
@@ -471,7 +436,7 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
                                     label: const Text('অনুমোদন',
                                         style: TextStyle(fontSize: 11)),
                                     backgroundColor:
-                                        Colors.blue.withOpacity(0.13),
+                                        Colors.blue.withValues(alpha: 0.13),
                                     onPressed: () =>
                                         _updateStatus(r, 'approved'),
                                   ),
@@ -479,7 +444,7 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
                                     label: const Text('প্রত্যাখ্যান',
                                         style: TextStyle(fontSize: 11)),
                                     backgroundColor:
-                                        Colors.red.withOpacity(0.13),
+                                        Colors.red.withValues(alpha: 0.13),
                                     onPressed: () =>
                                         _updateStatus(r, 'rejected'),
                                   ),
