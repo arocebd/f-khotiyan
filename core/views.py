@@ -819,7 +819,7 @@ def reports(request):
     # Returns
     total_returns = returns_qs.count()
     total_refunded = float(
-        returns_qs.filter(status='refunded').aggregate(t=Sum('return_amount'))['t'] or 0
+        returns_qs.filter(status='refunded').aggregate(t=Sum('refund_amount'))['t'] or 0
     )
 
     # Stock
