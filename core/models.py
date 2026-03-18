@@ -623,6 +623,28 @@ class Order(models.Model):
         help_text=_("Original screenshot used to create order")
     )
     
+    # Return Information
+    RETURN_REASON_CHOICES = [
+        ('defective', 'Defective Product'),
+        ('wrong_item', 'Wrong Item Sent'),
+        ('not_delivered', 'Not Delivered'),
+        ('size_issue', 'Size / Color Issue'),
+        ('customer_request', 'Customer Request'),
+        ('other', 'Other'),
+    ]
+    return_reason = models.CharField(
+        max_length=20,
+        choices=RETURN_REASON_CHOICES,
+        blank=True,
+        null=True,
+        verbose_name=_("Return Reason")
+    )
+    return_description = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name=_("Return Description")
+    )
+
     # SMS Tracking
     sms_sent = models.BooleanField(
         default=False,
