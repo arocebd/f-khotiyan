@@ -9,7 +9,7 @@ from django.utils.html import format_html
 from .models import (
     User, Product, Customer, Order, OrderItem, 
     Expense, CourierConfig, SMSPurchase, SMSLog,
-    Subscription, Return
+    Subscription, Return, WalletTransaction, SubscriptionPurchase
 )
 
 
@@ -257,3 +257,34 @@ class ReturnAdmin(admin.ModelAdmin):
     list_filter = ['status', 'return_date']
     search_fields = ['order__order_number', 'user__business_name']
     ordering = ['-return_date']
+
+
+@admin.register(WalletTransaction)
+class WalletTransactionAdmin(admin.ModelAdmin):
+    list_display = ['user', 'transaction_type', 'amount', 'balance_after', 'description', 'reference', 'created_at']
+    list_filter = ['transaction_type', 'created_at']
+    search_fields = ['user__business_name', 'user__phone_number', 'reference']
+    readonly_fields = ['created_at']
+    ordering = ['-created_at']
+
+
+@admin.register(SubscriptionPurchase)
+class SubscriptionPurchaseAdmin(admin.ModelAdmin):
+    list_display = ['user', 'plan', 'amount', 'payment_method', 'transaction_id', 'sender_number', 'status', 'created_at']
+    list_filter = ['plan', 'status', 'payment_method', 'created_at']
+    search_fields = ['user__business_name', 'user__phone_number', 'transaction_id']
+    readonly_fields = ['created_at', 'reviewed_at']
+    actions = ['approve_selected', 'reject_selected']
+    ordering = ['-created_at']
+
+    def approve_selected(self, request, queryset):
+        for purchase in queryset.filter(status='pending'):
+            purchase.approve()
+        self.message_user(request, f"{queryset.filter(status='approved').count()} purchase(s) approved.")
+    approve_selected.short_description = "Approve selected purchases"
+
+    def reject_selected(self, request, queryset):
+        from django.utils import timezone
+        queryset.filter(status='pending').update(status='rejected', reviewed_at=timezone.now())
+        self.message_user(request, "Selected purchases rejected.")
+    reject_selected.short_description = "Reject selected purchases"

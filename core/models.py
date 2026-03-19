@@ -135,12 +135,30 @@ class User(AbstractUser):
         verbose_name=_("Subscription Expiry Date")
     )
     
-    # SMS Balance
+    # SMS Balance (legacy count-based, kept for migration compatibility)
     sms_balance = models.IntegerField(
         default=0,
         validators=[MinValueValidator(0)],
         verbose_name=_("SMS Balance"),
         help_text=_("Remaining SMS credits")
+    )
+
+    # Wallet (monetary, in BDT)
+    wallet_balance = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0,
+        validators=[MinValueValidator(0)],
+        verbose_name=_("Wallet Balance"),
+        help_text=_("Wallet balance in BDT")
+    )
+
+    # AI free uses remaining (resets to 0 after first use beyond limit)
+    ai_free_uses_remaining = models.IntegerField(
+        default=3,
+        validators=[MinValueValidator(0)],
+        verbose_name=_("AI Free Uses Remaining"),
+        help_text=_("Free AI order creation uses remaining")
     )
     
     # Daily Order Limit Tracking (for free users)
@@ -196,29 +214,21 @@ class User(AbstractUser):
         return False
     
     @property
+    def is_premium(self):
+        """Check if user has active premium subscription"""
+        if self.subscription_type in ['monthly', 'yearly']:
+            if self.subscription_end_date and timezone.now() < self.subscription_end_date:
+                return True
+        return False
+
+    @property
     def daily_order_limit(self):
-        """Get daily order limit based on subscription"""
-        if self.subscription_type == 'free':
-            return 5  # Free users: 5 orders per day
-        return None  # Paid users: unlimited
+        """Get daily order limit based on subscription — unlimited for all"""
+        return None  # All users: unlimited orders
     
     def can_create_order(self):
-        """Check if user can create an order today"""
-        from django.utils import timezone
-        today = timezone.now().date()
-        
-        # Reset counter if it's a new day
-        if self.last_order_date != today:
-            self.daily_order_count = 0
-            self.last_order_date = today
-            self.save(update_fields=['daily_order_count', 'last_order_date'])
-        
-        # Paid users have unlimited orders
-        if self.subscription_type in ['monthly', 'yearly']:
-            return True
-        
-        # Free users limited to 5 orders per day
-        return self.daily_order_count < self.daily_order_limit
+        """All users can create orders without limit"""
+        return True
     
     def increment_order_count(self):
         """Increment daily order count"""
@@ -1250,3 +1260,142 @@ class CapitalInvestment(models.Model):
 
     def __str__(self):
         return f"{self.investment_type} ৳{self.amount} – {self.user.business_name}"
+
+
+# ==================== WALLET & SUBSCRIPTION ====================
+
+class WalletTransaction(models.Model):
+    """Records every wallet credit/debit for audit trail."""
+
+    TRANSACTION_TYPES = [
+        ('topup', 'Top-up'),
+        ('sms', 'SMS Charge'),
+        ('ai', 'AI Feature Charge'),
+        ('package', 'Package Purchase'),
+        ('refund', 'Refund'),
+    ]
+
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name='wallet_transactions'
+    )
+    transaction_type = models.CharField(max_length=20, choices=TRANSACTION_TYPES)
+    amount = models.DecimalField(
+        max_digits=10, decimal_places=2,
+        help_text='Positive = credit, Negative = debit'
+    )
+    balance_after = models.DecimalField(max_digits=10, decimal_places=2)
+    description = models.CharField(max_length=255, blank=True, default='')
+    reference = models.CharField(max_length=100, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'wallet_transactions'
+        verbose_name = _("Wallet Transaction")
+        verbose_name_plural = _("Wallet Transactions")
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', 'created_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.get_transaction_type_display()} {self.amount} – {self.user.business_name}"
+
+
+class SubscriptionPurchase(models.Model):
+    """Manual payment record for subscription or wallet top-up."""
+
+    PLAN_CHOICES = [
+        ('monthly', 'Monthly (৳200)'),
+        ('yearly', 'Yearly (৳1099)'),
+        ('wallet_topup', 'Wallet Top-up'),
+    ]
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+    ]
+    PAYMENT_METHODS = [
+        ('bkash', 'bKash'),
+        ('nagad', 'Nagad'),
+        ('rocket', 'Rocket'),
+        ('bank', 'Bank Transfer'),
+    ]
+
+    # Pricing config
+    MONTHLY_PRICE = 200
+    YEARLY_PRICE = 1099
+    MONTHLY_DURATION_DAYS = 30
+    YEARLY_DURATION_DAYS = 365
+
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name='subscription_purchases'
+    )
+    plan = models.CharField(max_length=20, choices=PLAN_CHOICES)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    payment_method = models.CharField(max_length=20, choices=PAYMENT_METHODS)
+    transaction_id = models.CharField(
+        max_length=100,
+        help_text='bKash/Nagad transaction ID provided by user'
+    )
+    sender_number = models.CharField(max_length=15, blank=True, default='')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    admin_note = models.TextField(blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'subscription_purchases'
+        verbose_name = _("Subscription Purchase")
+        verbose_name_plural = _("Subscription Purchases")
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.user.business_name} – {self.get_plan_display()} – {self.status}"
+
+    def approve(self, admin_note=''):
+        """Approve this purchase: activate subscription or credit wallet."""
+        from django.utils import timezone as tz
+        self.status = 'approved'
+        self.admin_note = admin_note
+        self.reviewed_at = tz.now()
+        self.save()
+
+        if self.plan == 'wallet_topup':
+            # Credit wallet
+            self.user.wallet_balance = models.F('wallet_balance') + self.amount
+            self.user.save(update_fields=['wallet_balance'])
+            self.user.refresh_from_db()
+            WalletTransaction.objects.create(
+                user=self.user,
+                transaction_type='topup',
+                amount=self.amount,
+                balance_after=self.user.wallet_balance,
+                description=f'Wallet top-up via {self.get_payment_method_display()}',
+                reference=self.transaction_id,
+            )
+        else:
+            # Activate subscription
+            now = tz.now()
+            days = (
+                self.MONTHLY_DURATION_DAYS if self.plan == 'monthly'
+                else self.YEARLY_DURATION_DAYS
+            )
+            plan_key = 'monthly' if self.plan == 'monthly' else 'yearly'
+            # Extend existing subscription if still active
+            current_end = self.user.subscription_end_date
+            start = max(now, current_end) if current_end and current_end > now else now
+            self.user.subscription_type = plan_key
+            self.user.subscription_start_date = now
+            self.user.subscription_end_date = start + datetime.timedelta(days=days)
+            self.user.save(update_fields=[
+                'subscription_type', 'subscription_start_date', 'subscription_end_date'
+            ])
+            WalletTransaction.objects.create(
+                user=self.user,
+                transaction_type='package',
+                amount=-self.amount,
+                balance_after=self.user.wallet_balance,
+                description=f'{self.get_plan_display()} subscription activated',
+                reference=self.transaction_id,
+            )
+

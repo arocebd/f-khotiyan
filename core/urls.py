@@ -55,6 +55,14 @@ urlpatterns = [
     # Dashboard Stats
     path('dashboard-stats/', views.dashboard_stats, name='dashboard-stats'),
 
+    # Wallet
+    path('wallet/', views.wallet_info, name='wallet-info'),
+    path('wallet/topup/', views.request_topup, name='wallet-topup'),
+
+    # Subscription / Package
+    path('subscription/purchase/', views.purchase_subscription, name='subscription-purchase'),
+    path('subscription/history/', views.purchase_history, name='subscription-history'),
+
     # Include router URLs (CRUD operations)
     path('', include(router.urls)),
 ]
