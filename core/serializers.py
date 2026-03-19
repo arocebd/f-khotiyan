@@ -74,8 +74,9 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'id', 'phone_number', 'email', 'business_name', 'owner_name',
             'location', 'district', 'country', 'logo', 'subscription_type',
             'subscription_start_date', 'subscription_end_date',
-            'is_subscription_active', 'sms_balance', 'daily_order_count',
-            'daily_order_limit', 'can_create_order', 'created_at'
+            'is_subscription_active', 'sms_balance', 'wallet_balance',
+            'daily_order_count', 'daily_order_limit', 'can_create_order',
+            'created_at'
         ]
         read_only_fields = ['phone_number', 'created_at']
     

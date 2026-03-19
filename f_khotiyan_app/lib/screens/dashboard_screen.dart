@@ -24,7 +24,8 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
+class _DashboardScreenState extends State<DashboardScreen>
+    with WidgetsBindingObserver {
   int _selectedIndex = 0;
 
   Map<String, dynamic>? _dashboardData;
@@ -35,7 +36,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _fetchData();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _fetchData();
+    }
   }
 
   final _api = ApiService();
@@ -119,9 +134,33 @@ class _DashboardScreenState extends State<DashboardScreen> {
           'প্রোফাইল'
         ][_selectedIndex]),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.language),
-            onPressed: () => localeProvider.toggleLocale(),
+          InkWell(
+            onTap: () {
+              localeProvider.toggleLocale();
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text(localeProvider.isBangla
+                    ? 'Language: English'
+                    : 'ভাষা: বাংলা'),
+                duration: const Duration(seconds: 1),
+                behavior: SnackBarBehavior.floating,
+              ));
+            },
+            borderRadius: BorderRadius.circular(20),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.language, size: 20),
+                  const SizedBox(width: 3),
+                  Text(
+                    localeProvider.isBangla ? 'বাং' : 'EN',
+                    style: const TextStyle(
+                        fontSize: 12, fontWeight: FontWeight.w700),
+                  ),
+                ],
+              ),
+            ),
           ),
           IconButton(
             icon: Icon(isDark ? Icons.light_mode : Icons.dark_mode),
@@ -864,10 +903,33 @@ class _ProfileTab extends StatelessWidget {
               ],
               const Divider(height: 1, indent: 56),
               _ProfileTile(
-                icon: Icons.card_membership_rounded,
-                label: 'সাবস্ক্রিপশন',
-                value: subscription,
+                icon: Icons.account_balance_wallet_rounded,
+                label: 'ওয়ালেট ব্যালেন্স',
+                value:
+                    '৳${((profileData?['wallet_balance'] ?? 0.0) as num).toStringAsFixed(2)}',
+                valueColor: Colors.green.shade700,
               ),
+              const Divider(height: 1, indent: 56),
+              _ProfileTile(
+                icon: subscription == 'free'
+                    ? Icons.person_outline_rounded
+                    : Icons.workspace_premium_rounded,
+                label: 'সাবস্ক্রিপশন',
+                value: subscription == 'free' ? 'ফ্রি প্ল্যান' : 'প্রিমিয়াম',
+                valueColor:
+                    subscription == 'free' ? null : Colors.amber.shade700,
+              ),
+              if (subscription != 'free' &&
+                  profileData?['subscription_end_date'] != null) ...[
+                const Divider(height: 1, indent: 56),
+                _ProfileTile(
+                  icon: Icons.calendar_today_rounded,
+                  label: 'মেয়াদ শেষ',
+                  value: _formatSubDate(
+                      profileData!['subscription_end_date'].toString()),
+                  valueColor: Colors.teal,
+                ),
+              ],
             ],
           ),
         ),
@@ -985,15 +1047,26 @@ class _ProfileTab extends StatelessWidget {
   }
 }
 
+String _formatSubDate(String iso) {
+  try {
+    final d = DateTime.parse(iso).toLocal();
+    return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+  } catch (_) {
+    return iso;
+  }
+}
+
 class _ProfileTile extends StatelessWidget {
   final IconData icon;
   final String label;
   final String value;
+  final Color? valueColor;
 
   const _ProfileTile({
     required this.icon,
     required this.label,
     required this.value,
+    this.valueColor,
   });
 
   @override
@@ -1006,7 +1079,7 @@ class _ProfileTile extends StatelessWidget {
               color: theme.colorScheme.onSurface.withValues(alpha: 0.55))),
       subtitle: Text(value,
           style: theme.textTheme.bodyMedium
-              ?.copyWith(fontWeight: FontWeight.w600)),
+              ?.copyWith(fontWeight: FontWeight.w600, color: valueColor)),
     );
   }
 }

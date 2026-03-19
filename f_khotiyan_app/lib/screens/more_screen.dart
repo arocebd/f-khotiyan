@@ -57,50 +57,47 @@ class MoreScreen extends StatelessWidget {
       ),
     ];
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('আরো')),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: GridView.builder(
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            crossAxisSpacing: 14,
-            mainAxisSpacing: 14,
-            childAspectRatio: 1.2,
-          ),
-          itemCount: features.length,
-          itemBuilder: (ctx, i) {
-            final f = features[i];
-            return InkWell(
-              borderRadius: BorderRadius.circular(16),
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => f.screen),
-              ),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: f.color.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: f.color.withValues(alpha: 0.3)),
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(f.icon, size: 40, color: f.color),
-                    const SizedBox(height: 10),
-                    Text(
-                      f.label,
-                      style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 14,
-                          color: f.color),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: GridView.builder(
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          crossAxisSpacing: 14,
+          mainAxisSpacing: 14,
+          childAspectRatio: 1.2,
         ),
+        itemCount: features.length,
+        itemBuilder: (ctx, i) {
+          final f = features[i];
+          return InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => f.screen),
+            ),
+            child: Container(
+              decoration: BoxDecoration(
+                color: f.color.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: f.color.withValues(alpha: 0.3)),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(f.icon, size: 40, color: f.color),
+                  const SizedBox(height: 10),
+                  Text(
+                    f.label,
+                    style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                        color: f.color),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }

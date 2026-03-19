@@ -74,25 +74,6 @@ class _SplashScreenState extends State<SplashScreen>
                       width: MediaQuery.of(context).size.width * 0.65,
                       fit: BoxFit.contain,
                     ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'f-khotiyan',
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF1A1A2E),
-                        letterSpacing: 1.2,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Business Management',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Colors.grey.shade500,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
                   ],
                 ),
               ),
