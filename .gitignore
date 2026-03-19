@@ -35,8 +35,7 @@ db.sqlite3-journal
 .DS_Store
 Thumbs.db
 
-# Flutter app (in separate repo or PC only)
-f_khotiyan_app/
+# Flutter standalone folder (unused)
 flutter/
 
 # Docs (optional - include if you want)
