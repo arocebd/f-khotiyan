@@ -554,11 +554,17 @@ class OrderViewSet(viewsets.ModelViewSet):
         instance = serializer.save()
         # Auto-create Return record when order is marked as returned
         if instance.order_status == 'returned' and old_status != 'returned':
+            return_reason = self.request.data.get('return_reason', 'customer_request')
+            return_description = self.request.data.get('return_description', '')
+            valid_reasons = [r[0] for r in Return.RETURN_REASON_CHOICES]
+            if return_reason not in valid_reasons:
+                return_reason = 'customer_request'
             Return.objects.get_or_create(
                 order=instance,
                 user=instance.user,
                 defaults={
-                    'reason': 'customer_request',
+                    'reason': return_reason,
+                    'description': return_description,
                     'status': 'pending',
                     'refund_amount': instance.grand_total or 0,
                 }
@@ -1736,6 +1742,11 @@ def dashboard_stats(request):
     )
     total_orders = orders.count()
     pending_orders = orders.filter(order_status='pending').count()
+    processing_orders = orders.filter(order_status='processing').count()
+    shipped_orders = orders.filter(order_status='shipped').count()
+    delivered_orders = orders.filter(order_status='delivered').count()
+    cancelled_orders = orders.filter(order_status='cancelled').count()
+    returned_orders = orders.filter(order_status='returned').count()
     low_stock = len([p for p in products if p.is_low_stock])
     total_customers = customers.count()
     total_products = products.count()
@@ -1759,6 +1770,11 @@ def dashboard_stats(request):
             'month_revenue': round(month_revenue, 2),
             'total_orders': total_orders,
             'pending_orders': pending_orders,
+            'processing_orders': processing_orders,
+            'shipped_orders': shipped_orders,
+            'delivered_orders': delivered_orders,
+            'cancelled_orders': cancelled_orders,
+            'returned_orders': returned_orders,
             'low_stock_count': low_stock,
             'total_customers': total_customers,
             'total_products': total_products,
