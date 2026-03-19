@@ -1,4 +1,4 @@
-package com.example.f_khotiyan
+package com.arocebd.fkhotiyan
 
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
