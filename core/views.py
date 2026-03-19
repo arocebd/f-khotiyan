@@ -958,26 +958,40 @@ def reports(request):
 
 # ==================== SMS SEND ENDPOINT ====================
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def sms_preview(request):
+    """
+    Preview SMS cost before sending.
+    GET /api/sms/preview/?message=...
+    Returns encoding, parts count, cost, remaining chars.
+    """
+    from core.sms_service import count_sms_parts, calculate_cost
+    message = request.query_params.get('message', '')
+    info = count_sms_parts(message)
+    return Response({
+        'encoding': info['encoding'],
+        'char_count': info['char_count'],
+        'parts': info['parts'],
+        'chars_remaining': info['chars_remaining'],
+        'cost': float(calculate_cost(info['parts'])),
+        'cost_per_part': float(calculate_cost(1)),
+    })
+
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def send_order_sms(request, order_id):
     """
-    Send SMS to customer for order update.
+    Send SMS to customer for an order.
     POST /api/orders/{id}/send-sms/
     Body (optional): { "message": "custom message" }
+    Cost is calculated per SMS part (0.45 BDT each).
     """
-    user = request.user
+    from decimal import Decimal
+    from core.sms_service import count_sms_parts, calculate_cost, send_sms
 
-    # Check wallet balance (0.45 tk per SMS)
-    SMS_COST = 0.45
-    if user.wallet_balance < SMS_COST:
-        return Response({
-            'success': False,
-            'error': 'insufficient_wallet_balance',
-            'message': f'ওয়ালেট ব্যালেন্স অপর্যাপ্ত। SMS পাঠাতে ৳{SMS_COST} প্রয়োজন। বর্তমান ব্যালেন্স: ৳{user.wallet_balance}',
-            'wallet_balance': float(user.wallet_balance),
-            'required': SMS_COST,
-        }, status=status.HTTP_402_PAYMENT_REQUIRED)
+    user = request.user
 
     try:
         order = Order.objects.get(id=order_id, user=user)
@@ -994,54 +1008,241 @@ def send_order_sms(request, order_id):
         'returned': 'ফেরত দেওয়া হয়েছে',
     }
     status_bn = status_labels.get(order.order_status, order.order_status)
-
     default_msg = (
         f"প্রিয় {order.customer_name}, আপনার অর্ডার #{order.order_number} "
         f"এর বর্তমান অবস্থা: {status_bn}। "
         f"মোট পরিমাণ: ৳{order.grand_total}। "
         f"ধন্যবাদ - {user.business_name}"
     )
-    message = request.data.get('message', default_msg)
+    message = request.data.get('message', default_msg).strip()
+    if not message:
+        message = default_msg
 
-    SMSLog.objects.create(
+    # Calculate cost based on actual SMS parts
+    sms_info = count_sms_parts(message)
+    parts = sms_info['parts']
+    cost = calculate_cost(parts)
+
+    # Check wallet balance
+    if user.wallet_balance < cost:
+        return Response({
+            'success': False,
+            'error': 'insufficient_wallet_balance',
+            'message': f'ওয়ালেট ব্যালেন্স অপর্যাপ্ত। {parts}টি SMS পার্টের জন্য ৳{cost} প্রয়োজন। বর্তমান ব্যালেন্স: ৳{user.wallet_balance}',
+            'wallet_balance': float(user.wallet_balance),
+            'required': float(cost),
+            'parts': parts,
+        }, status=status.HTTP_402_PAYMENT_REQUIRED)
+
+    # Create log entry (pending)
+    log = SMSLog.objects.create(
         user=user,
         order=order,
         phone_number=order.customer_phone,
         message=message,
-        status='sent',
+        status='pending',
+        sms_parts=parts,
+        cost=cost,
+        encoding=sms_info['encoding'],
     )
 
-    user.sms_balance -= 1
-    user.save(update_fields=['sms_balance'])
+    # Call the actual API
+    sender_id = user.sms_sender_id or None
+    result = send_sms(order.customer_phone, message, sender_id=sender_id)
 
-    # Deduct wallet balance
+    if result['success']:
+        log.status = 'sent'
+        log.api_response = result['response']
+        log.save(update_fields=['status', 'api_response'])
+
+        # Deduct wallet
+        user.wallet_balance = max(Decimal('0'), user.wallet_balance - cost)
+        user.save(update_fields=['wallet_balance'])
+
+        WalletTransaction.objects.create(
+            user=user,
+            transaction_type='sms',
+            amount=-cost,
+            balance_after=user.wallet_balance,
+            description=f'SMS ({parts} part{"s" if parts > 1 else ""}) to {order.customer_phone} — Order #{order.order_number}',
+            reference=str(order.id),
+        )
+
+        order.sms_sent = True
+        order.save(update_fields=['sms_sent'])
+
+        return Response({
+            'success': True,
+            'message': f'{order.customer_phone} নম্বরে SMS পাঠানো হয়েছে।',
+            'sms_parts': parts,
+            'cost': float(cost),
+            'encoding': sms_info['encoding'],
+            'wallet_balance': float(user.wallet_balance),
+        })
+    else:
+        log.status = 'failed'
+        log.failure_reason = str(result['response'])
+        log.api_response = result['response']
+        log.save(update_fields=['status', 'failure_reason', 'api_response'])
+
+        return Response({
+            'success': False,
+            'error': 'sms_api_failed',
+            'message': 'SMS পাঠাতে ব্যর্থ হয়েছে। পুনরায় চেষ্টা করুন।',
+            'details': result['response'],
+        }, status=status.HTTP_502_BAD_GATEWAY)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def send_bulk_sms(request):
+    """
+    Send SMS to multiple customers at once.
+    POST /api/sms/bulk/
+    Body: {
+      "recipients": [
+        {"phone": "01712345678", "name": "Customer 1"},
+        ...
+      ],
+      "message": "Custom message (use {name} placeholder)",
+      "order_ids": [1, 2, 3]   // optional – links log to orders
+    }
+    """
     from decimal import Decimal
-    sms_cost = Decimal('0.45')
-    user.wallet_balance = max(Decimal('0'), user.wallet_balance - sms_cost)
-    user.save(update_fields=['wallet_balance'])
-    WalletTransaction.objects.create(
-        user=user,
-        transaction_type='sms',
-        amount=-sms_cost,
-        balance_after=user.wallet_balance,
-        description=f'SMS to {order.customer_phone} (Order #{order.order_number})',
-        reference=str(order.id),
-    )
+    from core.sms_service import count_sms_parts, calculate_cost, send_sms
 
-    order.sms_sent = True
-    order.save(update_fields=['sms_sent'])
+    user = request.user
+    recipients = request.data.get('recipients', [])
+    message_template = request.data.get('message', '').strip()
+    order_ids = request.data.get('order_ids', [])
+
+    if not recipients:
+        return Response({'success': False, 'error': 'recipients is required'},
+                        status=status.HTTP_400_BAD_REQUEST)
+    if not message_template:
+        return Response({'success': False, 'error': 'message is required'},
+                        status=status.HTTP_400_BAD_REQUEST)
+
+    # Pre-calculate total cost using first recipient's message as representative
+    sample_msg = message_template.replace('{name}', recipients[0].get('name', ''))
+    sms_info = count_sms_parts(sample_msg)
+    parts_per_sms = sms_info['parts']
+    cost_per_sms = calculate_cost(parts_per_sms)
+    total_cost = cost_per_sms * len(recipients)
+
+    if user.wallet_balance < total_cost:
+        return Response({
+            'success': False,
+            'error': 'insufficient_wallet_balance',
+            'message': f'{len(recipients)} জনকে SMS পাঠাতে ৳{total_cost} প্রয়োজন। বর্তমান ব্যালেন্স: ৳{user.wallet_balance}',
+            'wallet_balance': float(user.wallet_balance),
+            'required': float(total_cost),
+            'count': len(recipients),
+            'parts_per_sms': parts_per_sms,
+        }, status=status.HTTP_402_PAYMENT_REQUIRED)
+
+    # Map order IDs to Order objects
+    order_map = {}
+    if order_ids:
+        for o in Order.objects.filter(id__in=order_ids, user=user):
+            order_map[str(o.id)] = o
+
+    sender_id = user.sms_sender_id or None
+    sent_count = 0
+    failed_count = 0
+    total_deducted = Decimal('0')
+
+    for i, recipient in enumerate(recipients):
+        phone = recipient.get('phone', '').strip()
+        name = recipient.get('name', '')
+        order_id_key = str(recipient.get('order_id', ''))
+        order_obj = order_map.get(order_id_key)
+
+        if not phone:
+            failed_count += 1
+            continue
+
+        message = message_template.replace('{name}', name)
+        sms_info = count_sms_parts(message)
+        parts = sms_info['parts']
+        cost = calculate_cost(parts)
+
+        log = SMSLog.objects.create(
+            user=user,
+            order=order_obj,
+            phone_number=phone,
+            message=message,
+            status='pending',
+            sms_parts=parts,
+            cost=cost,
+            encoding=sms_info['encoding'],
+        )
+
+        result = send_sms(phone, message, sender_id=sender_id)
+
+        if result['success']:
+            log.status = 'sent'
+            log.api_response = result['response']
+            log.save(update_fields=['status', 'api_response'])
+
+            user.wallet_balance = max(Decimal('0'), user.wallet_balance - cost)
+            user.save(update_fields=['wallet_balance'])
+            total_deducted += cost
+
+            WalletTransaction.objects.create(
+                user=user,
+                transaction_type='sms',
+                amount=-cost,
+                balance_after=user.wallet_balance,
+                description=f'Bulk SMS to {phone}',
+                reference=order_id_key or f'bulk_{i}',
+            )
+            sent_count += 1
+        else:
+            log.status = 'failed'
+            log.failure_reason = str(result['response'])
+            log.api_response = result['response']
+            log.save(update_fields=['status', 'failure_reason', 'api_response'])
+            failed_count += 1
 
     return Response({
         'success': True,
-        'message': f'{order.customer_phone} নম্বরে SMS পাঠানো হয়েছে।',
-        'sms_balance_remaining': user.sms_balance,
+        'sent': sent_count,
+        'failed': failed_count,
+        'total': len(recipients),
+        'total_cost': float(total_deducted),
         'wallet_balance': float(user.wallet_balance),
+        'message': f'{sent_count}টি SMS সফলভাবে পাঠানো হয়েছে।',
     })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def sms_logs(request):
+    """
+    Get SMS logs for the current user.
+    GET /api/sms/logs/?page=1&limit=20
+    """
+    logs = SMSLog.objects.filter(user=request.user).order_by('-sent_at')[:100]
+    data = [{
+        'id': log.id,
+        'phone_number': log.phone_number,
+        'message': log.message,
+        'status': log.status,
+        'sms_parts': log.sms_parts,
+        'cost': float(log.cost),
+        'encoding': log.encoding,
+        'failure_reason': log.failure_reason,
+        'order_number': log.order.order_number if log.order else None,
+        'sent_at': log.sent_at.isoformat(),
+    } for log in logs]
+    return Response({'results': data, 'count': len(data)})
 
 
 # ==================== STEADFAST COURIER INTEGRATION ====================
 
 STEADFAST_BASE_URL = 'https://portal.packzy.com/api/v1'
+
 
 
 def _steadfast_headers(config):

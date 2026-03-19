@@ -153,6 +153,15 @@ class User(AbstractUser):
         help_text=_("Wallet balance in BDT")
     )
 
+    # SMS Sender ID (user's registered sender ID on bulksmsbd.net)
+    sms_sender_id = models.CharField(
+        max_length=50,
+        blank=True,
+        default='',
+        verbose_name=_("SMS Sender ID"),
+        help_text=_("Registered sender ID on bulksmsbd.net")
+    )
+
     # AI free uses remaining (resets to 0 after first use beyond limit)
     ai_free_uses_remaining = models.IntegerField(
         default=3,
@@ -1030,12 +1039,13 @@ class SMSLog(models.Model):
     """
     Log all SMS sent by the system.
     """
-    
+
     STATUS_CHOICES = [
         ('sent', 'Sent'),
         ('failed', 'Failed'),
+        ('pending', 'Pending'),
     ]
-    
+
     user = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
@@ -1050,10 +1060,10 @@ class SMSLog(models.Model):
         related_name='sms_logs',
         verbose_name=_("Related Order")
     )
-    
+
     # SMS Details
     phone_number = models.CharField(
-        max_length=15,
+        max_length=20,
         verbose_name=_("Recipient Phone")
     )
     message = models.TextField(
@@ -1062,10 +1072,40 @@ class SMSLog(models.Model):
     status = models.CharField(
         max_length=10,
         choices=STATUS_CHOICES,
-        default='sent',
+        default='pending',
         verbose_name=_("Status")
     )
-    
+    failure_reason = models.TextField(
+        blank=True,
+        default='',
+        verbose_name=_("Failure Reason")
+    )
+
+    # Billing
+    sms_parts = models.PositiveSmallIntegerField(
+        default=1,
+        verbose_name=_("SMS Parts")
+    )
+    cost = models.DecimalField(
+        max_digits=8,
+        decimal_places=2,
+        default=0,
+        verbose_name=_("Cost (BDT)")
+    )
+    encoding = models.CharField(
+        max_length=10,
+        default='gsm7',
+        verbose_name=_("Encoding"),
+        help_text=_("gsm7 or unicode")
+    )
+
+    # Raw API response
+    api_response = models.JSONField(
+        null=True,
+        blank=True,
+        verbose_name=_("API Response")
+    )
+
     # Timestamp
     sent_at = models.DateTimeField(
         auto_now_add=True,

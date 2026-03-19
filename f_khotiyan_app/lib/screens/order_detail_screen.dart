@@ -18,7 +18,6 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   final _api = ApiService();
   Map<String, dynamic>? _order;
   bool _loading = true;
-  bool _sendingSms = false;
   bool _sendingSteadfast = false;
   bool _checkingStatus = false;
   bool _sendingPathao = false;
@@ -164,21 +163,49 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   }
 
   Future<void> _sendSms() async {
-    setState(() => _sendingSms = true);
-    try {
-      final res = await _api.sendOrderSms(_token(), widget.orderId);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(res['message'] ?? 'SMS পাঠানো হয়েছে')));
-      }
-      await _load();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('SMS ত্রুটি: $e')));
-      }
-    } finally {
-      if (mounted) setState(() => _sendingSms = false);
+    final order = _order;
+    if (order == null) return;
+
+    // Build default message
+    final statusLabels = {
+      'pending': 'অপেক্ষারত',
+      'processing': 'প্রক্রিয়াকরণ হচ্ছে',
+      'shipped': 'পাঠানো হয়েছে',
+      'delivered': 'ডেলিভারি হয়েছে',
+      'cancelled': 'বাতিল করা হয়েছে',
+      'returned': 'ফেরত দেওয়া হয়েছে',
+    };
+    final statusBn =
+        statusLabels[order['order_status']] ?? order['order_status'];
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final defaultMsg =
+        'প্রিয় ${order['customer_name']}, আপনার অর্ডার #${order['order_number']} '
+        'এর বর্তমান অবস্থা: $statusBn। '
+        'মোট পরিমাণ: ৳${order['grand_total']}। '
+        'ধন্যবাদ - ${auth.businessName ?? ''}';
+
+    // Show SMS composer dialog
+    final result = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _SmsComposerSheet(
+        defaultMessage: defaultMsg,
+        apiService: _api,
+        token: _token(),
+        orderId: widget.orderId,
+      ),
+    );
+
+    if (result != null && mounted) {
+      final success = result['success'] == true;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(success
+            ? result['message'] ?? 'SMS পাঠানো হয়েছে'
+            : result['message'] ?? 'SMS ত্রুটি'),
+        backgroundColor: success ? Colors.green : Colors.red,
+      ));
+      if (success) await _load();
     }
   }
 
@@ -623,18 +650,13 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             runSpacing: 8,
             children: [
               OutlinedButton.icon(
-                onPressed: _sendingSms ? null : _sendSms,
-                icon: _sendingSms
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2))
-                    : Icon(
-                        o['sms_sent'] == true
-                            ? Icons.sms_rounded
-                            : Icons.sms_outlined,
-                        color: o['sms_sent'] == true ? Colors.green : null,
-                      ),
+                onPressed: _sendSms,
+                icon: Icon(
+                  o['sms_sent'] == true
+                      ? Icons.sms_rounded
+                      : Icons.sms_outlined,
+                  color: o['sms_sent'] == true ? Colors.green : null,
+                ),
                 label: Text(
                     o['sms_sent'] == true ? 'SMS পাঠানো হয়েছে' : 'SMS পাঠান'),
               ),
@@ -774,6 +796,218 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ================== SMS COMPOSER BOTTOM SHEET ==================
+
+class _SmsComposerSheet extends StatefulWidget {
+  final String defaultMessage;
+  final ApiService apiService;
+  final String token;
+  final int orderId;
+  const _SmsComposerSheet({
+    required this.defaultMessage,
+    required this.apiService,
+    required this.token,
+    required this.orderId,
+  });
+  @override
+  State<_SmsComposerSheet> createState() => _SmsComposerSheetState();
+}
+
+class _SmsComposerSheetState extends State<_SmsComposerSheet> {
+  late TextEditingController _ctrl;
+  bool _sending = false;
+
+  // SMS encoding limits
+  static const _gsm7Single = 160;
+  static const _gsm7Multi = 153;
+  static const _unicodeSingle = 70;
+  static const _unicodeMulti = 67;
+
+  // GSM-7 allowed chars (simplified check)
+  static const _gsm7Chars = r'@£$¥èéùìòÇ'
+      '\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞ\x1bÆæßÉ !"#¤%&\'()*+,-./'
+      '0123456789:;<=>?¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿'
+      'abcdefghijklmnopqrstuvwxyzäöñüà[]{}\\|^~€\f';
+
+  bool _isGsm7(String text) {
+    for (final c in text.runes) {
+      if (!_gsm7Chars.contains(String.fromCharCode(c))) return false;
+    }
+    return true;
+  }
+
+  Map<String, dynamic> _computeInfo(String text) {
+    final isGsm = _isGsm7(text);
+    final encoding = isGsm ? 'English' : 'বাংলা (UTF-16)';
+    final single = isGsm ? _gsm7Single : _unicodeSingle;
+    final multi = isGsm ? _gsm7Multi : _unicodeMulti;
+    final len = text.length;
+    final int parts;
+    final int remaining;
+    if (len <= single) {
+      parts = len == 0 ? 0 : 1;
+      remaining = single - len;
+    } else {
+      parts = (len + multi - 1) ~/ multi;
+      final usedLast = len % multi;
+      remaining = usedLast == 0 ? 0 : multi - usedLast;
+    }
+    final cost = parts * 0.45;
+    return {
+      'encoding': encoding,
+      'len': len,
+      'parts': parts,
+      'remaining': remaining,
+      'cost': cost,
+    };
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(text: widget.defaultMessage);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send() async {
+    setState(() => _sending = true);
+    try {
+      final res = await widget.apiService.sendOrderSms(
+          widget.token, widget.orderId,
+          message: _ctrl.text.trim());
+      if (mounted) Navigator.of(context).pop(res);
+    } catch (e) {
+      if (mounted) {
+        Navigator.of(context)
+            .pop({'success': false, 'message': 'SMS ত্রুটি: $e'});
+      }
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final info = _computeInfo(_ctrl.text);
+    final parts = info['parts'] as int;
+    final cost = info['cost'] as double;
+    final encoding = info['encoding'] as String;
+    final remaining = info['remaining'] as int;
+    final len = info['len'] as int;
+
+    return Padding(
+      padding:
+          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Handle
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text('SMS পাঠান',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _ctrl,
+              maxLines: 5,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                hintText: 'SMS বার্তা লিখুন...',
+                contentPadding: EdgeInsets.all(12),
+              ),
+            ),
+            const SizedBox(height: 8),
+
+            // Stats row
+            DefaultTextStyle(
+              style: const TextStyle(fontSize: 12, color: Colors.black87),
+              child: Row(
+                children: [
+                  _statChip('Encoding: $encoding', Colors.blue.shade50,
+                      Colors.blue.shade700),
+                  const SizedBox(width: 6),
+                  _statChip(
+                      '$len অক্ষর', Colors.grey.shade100, Colors.grey.shade700),
+                  const SizedBox(width: 6),
+                  _statChip('$parts SMS পার্ট', Colors.orange.shade50,
+                      Colors.orange.shade700),
+                  const SizedBox(width: 6),
+                  _statChip('৳${cost.toStringAsFixed(2)}', Colors.green.shade50,
+                      Colors.green.shade700),
+                ],
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'বাকি $remaining অক্ষর · ${parts == 0 ? 0 : parts} পার্ট × ৳0.45',
+              style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+            ),
+            const SizedBox(height: 12),
+
+            // Send button
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: (_sending || parts == 0) ? null : _send,
+                icon: _sending
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.send_rounded),
+                label: _sending
+                    ? const Text('পাঠানো হচ্ছে...')
+                    : Text('পাঠান (৳${cost.toStringAsFixed(2)})'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green.shade600,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _statChip(String text, Color bg, Color fg) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(text,
+          style:
+              TextStyle(color: fg, fontSize: 11, fontWeight: FontWeight.w500)),
     );
   }
 }

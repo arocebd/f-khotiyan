@@ -59,6 +59,11 @@ urlpatterns = [
     path('wallet/', views.wallet_info, name='wallet-info'),
     path('wallet/topup/', views.request_topup, name='wallet-topup'),
 
+    # SMS
+    path('sms/preview/', views.sms_preview, name='sms-preview'),
+    path('sms/bulk/', views.send_bulk_sms, name='sms-bulk'),
+    path('sms/logs/', views.sms_logs, name='sms-logs'),
+
     # Subscription / Package
     path('subscription/purchase/', views.purchase_subscription, name='subscription-purchase'),
     path('subscription/history/', views.purchase_history, name='subscription-history'),

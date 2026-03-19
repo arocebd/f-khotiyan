@@ -254,6 +254,17 @@ class ApiService {
     return _post('/orders/$orderId/send-sms/', token, body);
   }
 
+  Future<Map<String, dynamic>> getSmsPreview(String token, String message) =>
+      _get('/sms/preview/?message=${Uri.encodeQueryComponent(message)}', token);
+
+  Future<Map<String, dynamic>> getSmsLogs(String token) =>
+      _get('/sms/logs/', token);
+
+  Future<Map<String, dynamic>> sendBulkSms(String token,
+          List<Map<String, dynamic>> recipients, String message) =>
+      _post(
+          '/sms/bulk/', token, {'recipients': recipients, 'message': message});
+
   Future<Map<String, dynamic>> trackCourier(String token, int orderId) =>
       _get('/orders/$orderId/track-courier/', token);
 

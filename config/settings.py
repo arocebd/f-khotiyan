@@ -223,6 +223,12 @@ SWAGGER_SETTINGS = {
 GEMINI_API_KEY = config('GEMINI_API_KEY', default='AIzaSyAPeJt1PJ1Auz4aSdGHvkYtAj1bdhmbm5g')
 GEMINI_MODEL = 'gemini-2.0-flash'
 
+# BulkSMS (bulksmsbd.net) Configuration
+BULKSMS_API_KEY = config('BULKSMS_API_KEY', default='m3t5iYseSmR8HKYFY5n4')
+BULKSMS_API_URL = 'https://bulksmsbd.net/api/smsapi'
+BULKSMS_SENDER_ID = config('BULKSMS_SENDER_ID', default='')  # Set your registered sender ID
+BULKSMS_COST_PER_PART = '0.45'  # BDT per SMS part
+
 # Application Settings
 FREE_USER_DAILY_ORDER_LIMIT = 5
 
