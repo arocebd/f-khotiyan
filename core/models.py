@@ -1395,24 +1395,61 @@ class SubscriptionPurchase(models.Model):
     def approve(self, admin_note=''):
         """Approve this purchase: activate subscription or credit wallet."""
         from django.utils import timezone as tz
-        self.status = 'approved'
-        self.admin_note = admin_note
-        self.reviewed_at = tz.now()
-        self.save()
+        import logging
+        from django.db import transaction
+        from django.db.models import F
 
-        if self.plan == 'wallet_topup':
-            # Credit wallet
-            self.user.wallet_balance = models.F('wallet_balance') + self.amount
-            self.user.save(update_fields=['wallet_balance'])
-            self.user.refresh_from_db()
-            WalletTransaction.objects.create(
-                user=self.user,
-                transaction_type='topup',
-                amount=self.amount,
-                balance_after=self.user.wallet_balance,
-                description=f'Wallet top-up via {self.get_payment_method_display()}',
-                reference=self.transaction_id,
-            )
+        logger = logging.getLogger(__name__)
+
+        with transaction.atomic():
+            self.status = 'approved'
+            self.admin_note = admin_note
+            self.reviewed_at = tz.now()
+            self.save()
+
+            if self.plan == 'wallet_topup':
+                # Atomically increase user's wallet balance using F expression
+                User.objects.filter(pk=self.user.pk).update(
+                    wallet_balance=F('wallet_balance') + self.amount
+                )
+                # Refresh user instance to get the new balance
+                self.user.refresh_from_db()
+                try:
+                    WalletTransaction.objects.create(
+                        user=self.user,
+                        transaction_type='topup',
+                        amount=self.amount,
+                        balance_after=self.user.wallet_balance,
+                        description=f'Wallet top-up via {self.get_payment_method_display()}',
+                        reference=self.transaction_id,
+                    )
+                except Exception:
+                    logger.exception('Failed to create WalletTransaction for SubscriptionPurchase id=%s', self.id)
+            else:
+                # Activate subscription
+                now = tz.now()
+                days = (
+                    self.MONTHLY_DURATION_DAYS if self.plan == 'monthly'
+                    else self.YEARLY_DURATION_DAYS
+                )
+                plan_key = 'monthly' if self.plan == 'monthly' else 'yearly'
+                # Extend existing subscription if still active
+                current_end = self.user.subscription_end_date
+                start = max(now, current_end) if current_end and current_end > now else now
+                self.user.subscription_type = plan_key
+                self.user.subscription_start_date = now
+                self.user.subscription_end_date = start + datetime.timedelta(days=days)
+                self.user.save(update_fields=[
+                    'subscription_type', 'subscription_start_date', 'subscription_end_date'
+                ])
+                WalletTransaction.objects.create(
+                    user=self.user,
+                    transaction_type='package',
+                    amount=-self.amount,
+                    balance_after=self.user.wallet_balance,
+                    description=f'{self.get_plan_display()} subscription activated',
+                    reference=self.transaction_id,
+                )
         else:
             # Activate subscription
             now = tz.now()
