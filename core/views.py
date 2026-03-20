@@ -2099,7 +2099,9 @@ def request_topup(request):
         return Response({'success': False, 'error': 'Transaction ID required'}, status=400)
 
     # Check for duplicate transaction_id
-    if SubscriptionPurchase.objects.filter(transaction_id=transaction_id).exists():
+    if SubscriptionPurchase.objects.filter(
+        transaction_id=transaction_id, plan__in=['monthly', 'yearly']
+    ).exists():
         return Response({'success': False, 'error': 'This transaction ID has already been submitted'}, status=400)
 
     purchase = SubscriptionPurchase.objects.create(
@@ -2138,7 +2140,9 @@ def purchase_subscription(request):
         return Response({'success': False, 'error': 'Invalid payment method'}, status=400)
     if not transaction_id:
         return Response({'success': False, 'error': 'Transaction ID required'}, status=400)
-    if SubscriptionPurchase.objects.filter(transaction_id=transaction_id).exists():
+    if SubscriptionPurchase.objects.filter(
+        transaction_id=transaction_id, plan__in=['monthly', 'yearly']
+    ).exists():
         return Response({'success': False, 'error': 'This transaction ID has already been submitted'}, status=400)
 
     purchase = SubscriptionPurchase.objects.create(
@@ -2163,7 +2167,9 @@ def purchase_subscription(request):
 def purchase_history(request):
     """GET /api/subscription/history/ - list all purchase requests"""
     user = request.user
-    purchases = SubscriptionPurchase.objects.filter(user=user).order_by('-created_at')[:20]
+    purchases = SubscriptionPurchase.objects.filter(
+        user=user, plan__in=['monthly', 'yearly']
+    ).order_by('-created_at')[:20]
     data = [
         {
             'id': p.id,
@@ -2234,7 +2240,9 @@ def request_topup(request):
         return Response({'success': False, 'error': 'Transaction ID required'}, status=400)
 
     # Check for duplicate transaction_id
-    if SubscriptionPurchase.objects.filter(transaction_id=transaction_id).exists():
+    if SubscriptionPurchase.objects.filter(
+        transaction_id=transaction_id, plan__in=['monthly', 'yearly']
+    ).exists():
         return Response({'success': False, 'error': 'This transaction ID has already been submitted'}, status=400)
 
     purchase = SubscriptionPurchase.objects.create(
@@ -2273,7 +2281,9 @@ def purchase_subscription(request):
         return Response({'success': False, 'error': 'Invalid payment method'}, status=400)
     if not transaction_id:
         return Response({'success': False, 'error': 'Transaction ID required'}, status=400)
-    if SubscriptionPurchase.objects.filter(transaction_id=transaction_id).exists():
+    if SubscriptionPurchase.objects.filter(
+        transaction_id=transaction_id, plan__in=['monthly', 'yearly']
+    ).exists():
         return Response({'success': False, 'error': 'This transaction ID has already been submitted'}, status=400)
 
     purchase = SubscriptionPurchase.objects.create(
@@ -2298,7 +2308,9 @@ def purchase_subscription(request):
 def purchase_history(request):
     """GET /api/subscription/history/ - list all purchase requests"""
     user = request.user
-    purchases = SubscriptionPurchase.objects.filter(user=user).order_by('-created_at')[:20]
+    purchases = SubscriptionPurchase.objects.filter(
+        user=user, plan__in=['monthly', 'yearly']
+    ).order_by('-created_at')[:20]
     data = [
         {
             'id': p.id,
