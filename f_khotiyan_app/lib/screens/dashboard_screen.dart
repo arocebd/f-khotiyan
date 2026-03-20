@@ -6,6 +6,7 @@ import '../providers/auth_provider.dart';
 import '../providers/locale_provider.dart';
 import '../providers/theme_provider.dart';
 import '../services/api_service.dart';
+import '../services/firebase_service.dart';
 import 'login_screen.dart';
 import 'orders_screen.dart';
 import 'products_screen.dart';
@@ -16,6 +17,7 @@ import 'customers_screen.dart';
 import 'reports_screen.dart';
 import 'subscription_screen.dart';
 import '../widgets/native_ad_widget.dart';
+import '../l10n/app_localizations.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -27,17 +29,27 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen>
     with WidgetsBindingObserver {
   int _selectedIndex = 0;
-
+  bool _loadingDashboard = false;
   Map<String, dynamic>? _dashboardData;
   Map<String, dynamic>? _profileData;
-  bool _loadingDashboard = true;
   String? _errorMsg;
+
+  final _api = ApiService();
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _fetchData();
+    // Fetch initial data once UI is ready
+    WidgetsBinding.instance.addPostFrameCallback((_) => _fetchData());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed) {
+      _fetchData();
+    }
   }
 
   @override
@@ -45,15 +57,6 @@ class _DashboardScreenState extends State<DashboardScreen>
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _fetchData();
-    }
-  }
-
-  final _api = ApiService();
 
   Future<void> _fetchData() async {
     if (!mounted) return;
@@ -63,24 +66,48 @@ class _DashboardScreenState extends State<DashboardScreen>
     });
 
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final token = authProvider.accessToken;
-    if (token == null) return;
-
     try {
+      // Use callWithAutoRefresh so token refresh is handled automatically
       final results = await Future.wait([
-        _api.getDashboardStats(token),
-        _api.getProfile(token),
+        authProvider.callWithAutoRefresh((t) => _api.getDashboardStats(t)),
+        authProvider.callWithAutoRefresh((t) => _api.getProfile(t)),
       ]);
+
       if (!mounted) return;
       final dashData = results[0] as Map<String, dynamic>?;
       // Update premium status in AuthProvider from fresh stats
       final statsMap = dashData?['stats'] as Map<String, dynamic>? ?? {};
       authProvider.updatePremiumStatus(statsMap['is_premium'] == true);
+      final freshProfile = (results[1] as Map<String, dynamic>?)?['user'];
+
+      // Try to explicitly fetch wallet info and merge wallet_balance
+      try {
+        final walletInfo = await authProvider
+            .callWithAutoRefresh((t) => _api.getWalletInfo(t));
+        if (walletInfo['wallet_balance'] != null) {
+          statsMap['wallet_balance'] = walletInfo['wallet_balance'];
+          if (dashData != null) {
+            dashData['stats'] = Map<String, dynamic>.from(statsMap);
+          }
+        }
+      } catch (e) {
+        // Log wallet fetch error but continue
+        debugPrint('Wallet fetch failed: $e');
+      }
+
       setState(() {
         _dashboardData = dashData;
-        _profileData = (results[1] as Map<String, dynamic>?)?['user'];
+        _profileData = freshProfile;
       });
+
+      // Update provider cached user data and sync latest profile to Firebase
+      if (freshProfile != null) {
+        final profileMap = freshProfile as Map<String, dynamic>;
+        await authProvider.setUserData(profileMap);
+        FirebaseService.syncProfile(profileMap);
+      }
     } catch (e) {
+      debugPrint('Dashboard fetch failed: $e');
       _errorMsg = e.toString();
     } finally {
       if (mounted) setState(() => _loadingDashboard = false);
@@ -104,6 +131,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
     final localeProvider = Provider.of<LocaleProvider>(context);
     final authProvider = Provider.of<AuthProvider>(context);
+    final l = AppLocalizations.of(context)!;
 
     final pages = [
       _HomeTab(
@@ -127,11 +155,11 @@ class _DashboardScreenState extends State<DashboardScreen>
     return Scaffold(
       appBar: AppBar(
         title: Text([
-          'ড্যাশবোর্ড',
-          'অর্ডার',
-          'পণ্য',
-          'আরো',
-          'প্রোফাইল'
+          l.dashboardTitle,
+          l.navOrders,
+          l.navProducts,
+          l.navMore,
+          l.navProfile,
         ][_selectedIndex]),
         actions: [
           InkWell(
@@ -154,7 +182,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                   const Icon(Icons.language, size: 20),
                   const SizedBox(width: 3),
                   Text(
-                    localeProvider.isBangla ? 'বাং' : 'EN',
+                    localeProvider.isBangla ? 'EN' : 'বাংলা',
                     style: const TextStyle(
                         fontSize: 12, fontWeight: FontWeight.w700),
                   ),
@@ -178,31 +206,31 @@ class _DashboardScreenState extends State<DashboardScreen>
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
         onDestinationSelected: (i) => setState(() => _selectedIndex = i),
-        destinations: const [
+        destinations: [
           NavigationDestination(
-            icon: Icon(Icons.dashboard_outlined),
-            selectedIcon: Icon(Icons.dashboard_rounded),
-            label: 'হোম',
+            icon: const Icon(Icons.dashboard_outlined),
+            selectedIcon: const Icon(Icons.dashboard_rounded),
+            label: l.navDashboard,
           ),
           NavigationDestination(
-            icon: Icon(Icons.receipt_long_outlined),
-            selectedIcon: Icon(Icons.receipt_long_rounded),
-            label: 'অর্ডার',
+            icon: const Icon(Icons.receipt_long_outlined),
+            selectedIcon: const Icon(Icons.receipt_long_rounded),
+            label: l.navOrders,
           ),
           NavigationDestination(
-            icon: Icon(Icons.inventory_2_outlined),
-            selectedIcon: Icon(Icons.inventory_2_rounded),
-            label: 'পণ্য',
+            icon: const Icon(Icons.inventory_2_outlined),
+            selectedIcon: const Icon(Icons.inventory_2_rounded),
+            label: l.navProducts,
           ),
           NavigationDestination(
-            icon: Icon(Icons.apps_rounded),
-            selectedIcon: Icon(Icons.apps_rounded),
-            label: 'আরো',
+            icon: const Icon(Icons.apps_rounded),
+            selectedIcon: const Icon(Icons.apps_rounded),
+            label: l.navMore,
           ),
           NavigationDestination(
-            icon: Icon(Icons.person_outline_rounded),
-            selectedIcon: Icon(Icons.person_rounded),
-            label: 'প্রোফাইল',
+            icon: const Icon(Icons.person_outline_rounded),
+            selectedIcon: const Icon(Icons.person_rounded),
+            label: l.navProfile,
           ),
         ],
       ),
@@ -232,6 +260,7 @@ class _HomeTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l = AppLocalizations.of(context)!;
 
     if (loading) {
       return const Center(child: CircularProgressIndicator());
@@ -244,12 +273,12 @@ class _HomeTab extends StatelessWidget {
           children: [
             const Icon(Icons.wifi_off_rounded, size: 56, color: Colors.grey),
             const SizedBox(height: 12),
-            Text('ডেটা লোড হয়নি', style: theme.textTheme.titleMedium),
+            Text(l.dataNotLoaded, style: theme.textTheme.titleMedium),
             const SizedBox(height: 8),
             ElevatedButton.icon(
               onPressed: onRefresh,
               icon: const Icon(Icons.refresh),
-              label: const Text('পুনরায় চেষ্টা'),
+              label: Text(l.retryBtn),
             ),
           ],
         ),
@@ -258,7 +287,7 @@ class _HomeTab extends StatelessWidget {
 
     final businessName = profileData?['business_name'] ??
         authProvider.businessName ??
-        'আপনার ব্যবসা';
+        l.businessName;
     final ownerName =
         profileData?['owner_name'] ?? authProvider.ownerName ?? '';
     final subscriptionType = profileData?['subscription_type'] ?? 'free';
@@ -301,7 +330,7 @@ class _HomeTab extends StatelessWidget {
               Expanded(
                 child: _StatCard(
                   icon: Icons.receipt_long_rounded,
-                  label: 'আজকের অর্ডার',
+                  label: l.todayOrders,
                   value: '$todayOrders',
                   color: Colors.blue,
                 ),
@@ -310,7 +339,7 @@ class _HomeTab extends StatelessWidget {
               Expanded(
                 child: _StatCard(
                   icon: Icons.currency_exchange_rounded,
-                  label: 'আজকের আয়',
+                  label: l.todayRevenue,
                   value: '৳$todayRevenue',
                   color: Colors.green,
                 ),
@@ -323,7 +352,7 @@ class _HomeTab extends StatelessWidget {
               Expanded(
                 child: _StatCard(
                   icon: Icons.calendar_month_rounded,
-                  label: 'মাসের আয়',
+                  label: l.monthRevenue,
                   value: '৳$monthRevenue',
                   color: Colors.orange,
                 ),
@@ -332,7 +361,7 @@ class _HomeTab extends StatelessWidget {
               Expanded(
                 child: _StatCard(
                   icon: Icons.pending_actions_rounded,
-                  label: 'অপেক্ষারত অর্ডার',
+                  label: l.pendingOrders,
                   value: '$pendingOrders',
                   color: Colors.purple,
                 ),
@@ -345,7 +374,7 @@ class _HomeTab extends StatelessWidget {
               Expanded(
                 child: _StatCard(
                   icon: Icons.people_rounded,
-                  label: 'গ্রাহক',
+                  label: l.customersCount,
                   value: '$totalCustomers',
                   color: Colors.teal,
                 ),
@@ -354,8 +383,8 @@ class _HomeTab extends StatelessWidget {
               Expanded(
                 child: _StatCard(
                   icon: Icons.inventory_rounded,
-                  label: 'কম স্টক',
-                  value: '$lowStockCount পণ্য',
+                  label: l.lowStock,
+                  value: '$lowStockCount${l.pieces}',
                   color: lowStockCount > 0 ? Colors.red : Colors.grey,
                 ),
               ),
@@ -375,7 +404,7 @@ class _HomeTab extends StatelessWidget {
           const SizedBox(height: 20),
 
           // Quick actions
-          Text('দ্রুত কাজ',
+          Text(l.quickActions,
               style: theme.textTheme.titleMedium
                   ?.copyWith(fontWeight: FontWeight.w700)),
           const SizedBox(height: 12),
@@ -389,7 +418,7 @@ class _HomeTab extends StatelessWidget {
             children: [
               _QuickAction(
                 icon: Icons.add_box_rounded,
-                label: 'নতুন অর্ডার',
+                label: l.newOrder,
                 color: Colors.blue,
                 onTap: () => Navigator.push(
                     context,
@@ -398,35 +427,35 @@ class _HomeTab extends StatelessWidget {
               ),
               _QuickAction(
                 icon: Icons.camera_alt_rounded,
-                label: 'AI অর্ডার',
+                label: l.aiOrder,
                 color: Colors.teal,
                 onTap: () => Navigator.push(context,
                     MaterialPageRoute(builder: (_) => const AiOrderScreen())),
               ),
               _QuickAction(
                 icon: Icons.person_add_rounded,
-                label: 'গ্রাহক',
+                label: l.customersTitle,
                 color: Colors.orange,
                 onTap: () => Navigator.push(context,
                     MaterialPageRoute(builder: (_) => const CustomersScreen())),
               ),
               _QuickAction(
                 icon: Icons.add_shopping_cart_rounded,
-                label: 'পণ্য',
+                label: l.navProducts,
                 color: Colors.purple,
                 onTap: () => Navigator.push(context,
                     MaterialPageRoute(builder: (_) => const ProductsScreen())),
               ),
               _QuickAction(
                 icon: Icons.bar_chart_rounded,
-                label: 'রিপোর্ট',
+                label: l.reportsTitle,
                 color: Colors.indigo,
                 onTap: () => Navigator.push(context,
                     MaterialPageRoute(builder: (_) => const ReportsScreen())),
               ),
               _QuickAction(
                 icon: Icons.apps_rounded,
-                label: 'আরো',
+                label: l.navMore,
                 color: Colors.green,
                 onTap: () => Navigator.push(context,
                     MaterialPageRoute(builder: (_) => const MoreScreen())),
@@ -439,12 +468,12 @@ class _HomeTab extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('সাম্প্রতিক অর্ডার',
+              Text(l.recentOrders,
                   style: theme.textTheme.titleMedium
                       ?.copyWith(fontWeight: FontWeight.w700)),
               TextButton(
                 onPressed: () {},
-                child: const Text('সব দেখুন'),
+                child: Text(l.seeAll),
               ),
             ],
           ),
@@ -462,7 +491,7 @@ class _HomeTab extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'এখনো কোনো অর্ডার নেই',
+                      l.noOrdersYet,
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color:
                             theme.colorScheme.onSurface.withValues(alpha: 0.5),
@@ -496,6 +525,7 @@ class _GreetingCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l = AppLocalizations.of(context)!;
     final isPremium = subscriptionType != 'free';
 
     return Container(
@@ -549,13 +579,13 @@ class _GreetingCard extends StatelessWidget {
                 if (ownerName.isNotEmpty) ...[
                   const SizedBox(height: 4),
                   Text(
-                    'মালিকঃ $ownerName',
+                    '${l.ownerLabel} $ownerName',
                     style: const TextStyle(color: Colors.white70, fontSize: 13),
                   ),
                 ],
                 const SizedBox(height: 4),
                 Text(
-                  isPremium ? 'প্রিমিয়াম সদস্য' : 'ফ্রি প্ল্যান',
+                  isPremium ? l.premiumMember : l.freePlan,
                   style: const TextStyle(color: Colors.white60, fontSize: 12),
                 ),
               ],
@@ -576,8 +606,9 @@ class _WalletStatusCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     final isPremium = stats['is_premium'] == true;
-    final walletBalance = (stats['wallet_balance'] ?? 0) as num;
+    final walletBalance = double.tryParse(stats['wallet_balance']?.toString() ?? '0') ?? 0.0;
     final aiRemaining = (stats['ai_free_uses_remaining'] ?? 0) as int;
     return Card(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -602,12 +633,12 @@ class _WalletStatusCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    isPremium ? 'প্রিমিয়াম সক্রিয়' : 'ফ্রি অ্যাকাউন্ট',
+                    isPremium ? l.premiumActive : l.freeAccount,
                     style: const TextStyle(
                         fontWeight: FontWeight.w700, fontSize: 14),
                   ),
                   Text(
-                    'ওয়ালেট: ৳${walletBalance.toStringAsFixed(2)} • AI বাকি: $aiRemainingটি',
+                    '${l.walletBalance}: ৳${walletBalance.toStringAsFixed(2)} • ${l.aiFreeLabel}: $aiRemaining${l.pieces}',
                     style: const TextStyle(fontSize: 12, color: Colors.grey),
                   ),
                 ],
@@ -619,7 +650,7 @@ class _WalletStatusCard extends StatelessWidget {
                     context,
                     MaterialPageRoute(
                         builder: (_) => const SubscriptionScreen())),
-                child: const Text('আপগ্রেড'),
+                child: Text(l.upgradeBtn),
               ),
           ],
         ),
@@ -818,6 +849,7 @@ class _ProfileTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l = AppLocalizations.of(context)!;
     final businessName =
         profileData?['business_name'] ?? authProvider.businessName ?? '—';
     final ownerName =
@@ -869,7 +901,7 @@ class _ProfileTab extends StatelessWidget {
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
-                  subscription == 'free' ? 'ফ্রি প্ল্যান' : 'প্রিমিয়াম',
+                  subscription == 'free' ? l.freePlanLabel : l.premiumLabel,
                   style: TextStyle(
                     color: subscription == 'free'
                         ? Colors.grey[600]
@@ -890,23 +922,23 @@ class _ProfileTab extends StatelessWidget {
             children: [
               _ProfileTile(
                 icon: Icons.phone_android_rounded,
-                label: 'ফোন নম্বর',
+                label: l.phoneNumber,
                 value: phone,
               ),
               if (email.isNotEmpty) ...[
                 const Divider(height: 1, indent: 56),
                 _ProfileTile(
                   icon: Icons.email_rounded,
-                  label: 'ইমেইল',
+                  label: l.emailLabel,
                   value: email,
                 ),
               ],
               const Divider(height: 1, indent: 56),
               _ProfileTile(
                 icon: Icons.account_balance_wallet_rounded,
-                label: 'ওয়ালেট ব্যালেন্স',
+                label: l.walletBalanceLabel,
                 value:
-                    '৳${((profileData?['wallet_balance'] ?? 0.0) as num).toStringAsFixed(2)}',
+                    '৳${(double.tryParse(profileData?['wallet_balance']?.toString() ?? '0') ?? 0.0).toStringAsFixed(2)}',
                 valueColor: Colors.green.shade700,
               ),
               const Divider(height: 1, indent: 56),
@@ -914,8 +946,8 @@ class _ProfileTab extends StatelessWidget {
                 icon: subscription == 'free'
                     ? Icons.person_outline_rounded
                     : Icons.workspace_premium_rounded,
-                label: 'সাবস্ক্রিপশন',
-                value: subscription == 'free' ? 'ফ্রি প্ল্যান' : 'প্রিমিয়াম',
+                label: l.subscriptionLabel,
+                value: subscription == 'free' ? l.freePlanLabel : l.premiumLabel,
                 valueColor:
                     subscription == 'free' ? null : Colors.amber.shade700,
               ),
@@ -924,7 +956,7 @@ class _ProfileTab extends StatelessWidget {
                 const Divider(height: 1, indent: 56),
                 _ProfileTile(
                   icon: Icons.calendar_today_rounded,
-                  label: 'মেয়াদ শেষ',
+                  label: l.expiryLabel,
                   value: _formatSubDate(
                       profileData!['subscription_end_date'].toString()),
                   valueColor: Colors.teal,
@@ -941,21 +973,21 @@ class _ProfileTab extends StatelessWidget {
             children: [
               ListTile(
                 leading: const Icon(Icons.notifications_outlined),
-                title: const Text('নোটিফিকেশন'),
+                title: Text(l.notifications),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () {},
               ),
               const Divider(height: 1, indent: 56),
               ListTile(
                 leading: const Icon(Icons.lock_outline_rounded),
-                title: const Text('পাসওয়ার্ড পরিবর্তন'),
+                title: Text(l.changePasswordLabel),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () {},
               ),
               const Divider(height: 1, indent: 56),
               ListTile(
                 leading: const Icon(Icons.help_outline_rounded),
-                title: const Text('সাহায্য ও সহায়তা'),
+                title: Text(l.helpSupport),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () {},
               ),
@@ -974,26 +1006,26 @@ class _ProfileTab extends StatelessWidget {
               ),
               borderRadius: BorderRadius.circular(14),
             ),
-            child: const Row(
+            child: Row(
               children: [
-                Icon(Icons.star_rounded, color: Colors.white, size: 36),
-                SizedBox(width: 12),
+                const Icon(Icons.star_rounded, color: Colors.white, size: 36),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'প্রিমিয়ামে আপগ্রেড করুন',
-                        style: TextStyle(
+                        l.upgradeToPremium,
+                        style: const TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.w700,
                           fontSize: 15,
                         ),
                       ),
-                      SizedBox(height: 2),
+                      const SizedBox(height: 2),
                       Text(
-                        'সীমাহীন অর্ডার + SMS সুবিধা পান',
-                        style: TextStyle(color: Colors.white70, fontSize: 12),
+                        l.unlimitedBenefits,
+                        style: const TextStyle(color: Colors.white70, fontSize: 12),
                       ),
                     ],
                   ),
@@ -1008,13 +1040,15 @@ class _ProfileTab extends StatelessWidget {
           onPressed: () {
             showDialog(
               context: context,
-              builder: (ctx) => AlertDialog(
-                title: const Text('লগআউট'),
-                content: const Text('আপনি কি নিশ্চিতভাবে লগআউট করতে চান?'),
+              builder: (ctx) {
+              final lCtx = AppLocalizations.of(ctx)!;
+              return AlertDialog(
+                title: Text(lCtx.logoutTitle),
+                content: Text(lCtx.logoutConfirmMsg),
                 actions: [
                   TextButton(
                     onPressed: () => Navigator.pop(ctx),
-                    child: const Text('বাতিল'),
+                    child: Text(lCtx.cancel),
                   ),
                   ElevatedButton(
                     onPressed: () {
@@ -1023,11 +1057,12 @@ class _ProfileTab extends StatelessWidget {
                     },
                     style:
                         ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                    child: const Text('লগআউট',
-                        style: TextStyle(color: Colors.white)),
+                    child: Text(lCtx.logoutBtn,
+                        style: const TextStyle(color: Colors.white)),
                   ),
                 ],
-              ),
+              );
+            },
             );
           },
           style: OutlinedButton.styleFrom(
@@ -1038,8 +1073,8 @@ class _ProfileTab extends StatelessWidget {
                 RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
           icon: const Icon(Icons.logout_rounded),
-          label: const Text('লগআউট',
-              style: TextStyle(fontWeight: FontWeight.w600)),
+          label: Text(l.logoutBtn,
+              style: const TextStyle(fontWeight: FontWeight.w600)),
         ),
         const SizedBox(height: 32),
       ],
@@ -1100,18 +1135,18 @@ class _OrderStatusDonut extends StatelessWidget {
     'returned': Color(0xFF9C27B0),
   };
 
-  static const _labels = {
-    'pending': 'অপেক্ষারত',
-    'processing': 'প্রক্রিয়াকরণ',
-    'shipped': 'পাঠানো হয়েছে',
-    'delivered': 'ডেলিভারি হয়েছে',
-    'cancelled': 'বাতিল',
-    'returned': 'ফেরত',
-  };
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l = AppLocalizations.of(context)!;
+    final labels = {
+      'pending': l.statusPending,
+      'processing': l.statusProcessing,
+      'shipped': l.statusShipped,
+      'delivered': l.statusDelivered,
+      'cancelled': l.statusCancelled,
+      'returned': l.statusReturned,
+    };
     final total = statusCounts.values.fold(0, (a, b) => a + b);
 
     return Card(
@@ -1121,7 +1156,7 @@ class _OrderStatusDonut extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'অর্ডার পরিসংখ্যান',
+              l.orderStats,
               style: theme.textTheme.titleMedium
                   ?.copyWith(fontWeight: FontWeight.w700),
             ),
@@ -1148,7 +1183,7 @@ class _OrderStatusDonut extends StatelessWidget {
                                 ?.copyWith(fontWeight: FontWeight.w800),
                           ),
                           Text(
-                            'মোট',
+                            l.totalLabel,
                             style: theme.textTheme.bodySmall?.copyWith(
                               color: theme.colorScheme.onSurface
                                   .withValues(alpha: 0.55),
@@ -1164,7 +1199,7 @@ class _OrderStatusDonut extends StatelessWidget {
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    children: _labels.entries.map((entry) {
+                    children: labels.entries.map((entry) {
                       final count = statusCounts[entry.key] ?? 0;
                       final color = _colors[entry.key] ?? Colors.grey;
                       final pct = total > 0 ? (count * 100 / total).round() : 0;

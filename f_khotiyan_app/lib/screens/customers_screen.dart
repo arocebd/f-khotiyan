@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
+import '../l10n/app_localizations.dart';
 
 class CustomersScreen extends StatefulWidget {
   const CustomersScreen({super.key});
@@ -185,9 +186,10 @@ class _CustomersScreenState extends State<CustomersScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
-        title: Text('গ্রাহক (${_filtered.length})'),
+        title: Text('${l.customersTitle} (${_filtered.length})'),
         actions: [
           IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
         ],
@@ -199,7 +201,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
             child: TextField(
               controller: _search,
               decoration: InputDecoration(
-                hintText: 'নাম বা ফোন দিয়ে খুঁজুন...',
+                hintText: l.search,
                 prefixIcon: const Icon(Icons.search_rounded),
                 border:
                     OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
@@ -223,7 +225,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
                             .onSurface
                             .withValues(alpha: 0.3)),
                     const SizedBox(height: 12),
-                    const Text('কোনো গ্রাহক পাওয়া যায়নি'),
+                    Text(l.noData),
                   ],
                 ),
               ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
+import '../l10n/app_localizations.dart';
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
@@ -115,9 +116,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('রিপোর্ট'),
+        title: Text(l.reportsTitle),
         actions: [
           IconButton(icon: const Icon(Icons.refresh_rounded), onPressed: _load),
         ],
@@ -154,7 +156,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           if (_loading)
             const Expanded(child: Center(child: CircularProgressIndicator()))
           else if (_report == null)
-            const Expanded(child: Center(child: Text('ডেটা পাওয়া যায়নি')))
+            Expanded(child: Center(child: Text(l.noData)))
           else
             Expanded(
               child: RefreshIndicator(

@@ -1450,29 +1450,4 @@ class SubscriptionPurchase(models.Model):
                     description=f'{self.get_plan_display()} subscription activated',
                     reference=self.transaction_id,
                 )
-        else:
-            # Activate subscription
-            now = tz.now()
-            days = (
-                self.MONTHLY_DURATION_DAYS if self.plan == 'monthly'
-                else self.YEARLY_DURATION_DAYS
-            )
-            plan_key = 'monthly' if self.plan == 'monthly' else 'yearly'
-            # Extend existing subscription if still active
-            current_end = self.user.subscription_end_date
-            start = max(now, current_end) if current_end and current_end > now else now
-            self.user.subscription_type = plan_key
-            self.user.subscription_start_date = now
-            self.user.subscription_end_date = start + datetime.timedelta(days=days)
-            self.user.save(update_fields=[
-                'subscription_type', 'subscription_start_date', 'subscription_end_date'
-            ])
-            WalletTransaction.objects.create(
-                user=self.user,
-                transaction_type='package',
-                amount=-self.amount,
-                balance_after=self.user.wallet_balance,
-                description=f'{self.get_plan_display()} subscription activated',
-                reference=self.transaction_id,
-            )
 

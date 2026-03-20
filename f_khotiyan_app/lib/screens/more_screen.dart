@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:f_khotiyan/l10n/app_localizations.dart';
 import 'customers_screen.dart';
 import 'expense_screen.dart';
 import 'capital_screen.dart';
@@ -12,49 +13,15 @@ class MoreScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     final features = [
-      const _Feature(
-        icon: Icons.people_rounded,
-        label: 'গ্রাহক',
-        color: Colors.blue,
-        screen: CustomersScreen(),
-      ),
-      const _Feature(
-        icon: Icons.payments_rounded,
-        label: 'খরচ',
-        color: Colors.orange,
-        screen: ExpenseScreen(),
-      ),
-      const _Feature(
-        icon: Icons.account_balance_wallet_rounded,
-        label: 'মূলধন',
-        color: Colors.green,
-        screen: CapitalScreen(),
-      ),
-      const _Feature(
-        icon: Icons.bar_chart_rounded,
-        label: 'রিপোর্ট',
-        color: Colors.teal,
-        screen: ReportsScreen(),
-      ),
-      const _Feature(
-        icon: Icons.local_shipping_rounded,
-        label: 'কুরিয়ার সেটিং',
-        color: Colors.indigo,
-        screen: CourierConfigScreen(),
-      ),
-      const _Feature(
-        icon: Icons.account_balance_wallet_rounded,
-        label: 'ওয়ালেট',
-        color: Colors.green,
-        screen: WalletScreen(),
-      ),
-      const _Feature(
-        icon: Icons.workspace_premium_rounded,
-        label: 'প্রিমিয়াম',
-        color: Colors.amber,
-        screen: SubscriptionScreen(),
-      ),
+      _Feature(icon: Icons.people_rounded,          label: l.customersTitle,    color: Colors.blue,   screen: const CustomersScreen()),
+      _Feature(icon: Icons.payments_rounded,         label: l.expenseLabel,      color: Colors.orange, screen: const ExpenseScreen()),
+      _Feature(icon: Icons.account_balance_wallet_rounded, label: l.capitalLabel, color: Colors.green,  screen: const CapitalScreen()),
+      _Feature(icon: Icons.bar_chart_rounded,        label: l.reportsTitle,      color: Colors.teal,   screen: const ReportsScreen()),
+      _Feature(icon: Icons.local_shipping_rounded,   label: l.courierSettings,   color: Colors.indigo, screen: const CourierConfigScreen()),
+      _Feature(icon: Icons.account_balance_wallet_rounded, label: l.walletTitle,  color: Colors.green,  screen: const WalletScreen()),
+      _Feature(icon: Icons.workspace_premium_rounded, label: l.premiumLabel,     color: Colors.amber,  screen: const SubscriptionScreen()),
     ];
 
     return Padding(

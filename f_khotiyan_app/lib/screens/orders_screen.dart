@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import '../widgets/native_ad_widget.dart';
@@ -21,14 +22,14 @@ class _OrdersScreenState extends State<OrdersScreen> {
   int? _totalCount;
   String? _statusFilter;
 
-  final List<Map<String, String>> _statusOptions = const [
-    {'label': 'সব', 'value': ''},
-    {'label': 'অপেক্ষারত', 'value': 'pending'},
-    {'label': 'প্রক্রিয়াকরণ', 'value': 'processing'},
-    {'label': 'পাঠানো হয়েছে', 'value': 'shipped'},
-    {'label': 'ডেলিভারি হয়েছে', 'value': 'delivered'},
-    {'label': 'বাতিল', 'value': 'cancelled'},
-    {'label': 'ফেরত', 'value': 'returned'},
+  final List<String> _statusValues = const [
+    '',
+    'pending',
+    'processing',
+    'shipped',
+    'delivered',
+    'cancelled',
+    'returned',
   ];
 
   String _token() =>
@@ -66,9 +67,10 @@ class _OrdersScreenState extends State<OrdersScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
-        title: Text('অর্ডার${_totalCount != null ? ' ($_totalCount)' : ''}'),
+        title: Text('${l.ordersTitle}${_totalCount != null ? ' ($_totalCount)' : ''}'),
         actions: [
           IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
         ],
@@ -81,19 +83,28 @@ class _OrdersScreenState extends State<OrdersScreen> {
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              itemCount: _statusOptions.length,
+              itemCount: _statusValues.length,
               separatorBuilder: (_, __) => const SizedBox(width: 6),
               itemBuilder: (ctx, i) {
-                final opt = _statusOptions[i];
-                final selected = (_statusFilter ?? '') == opt['value'];
+                final value = _statusValues[i];
+                final labels = [
+                  l.all,
+                  l.statusPending,
+                  l.statusProcessing,
+                  l.statusShipped,
+                  l.statusDelivered,
+                  l.statusCancelled,
+                  l.statusReturned,
+                ];
+                final selected = (_statusFilter ?? '') == value;
                 return FilterChip(
-                  label: Text(opt['label']!,
+                  label: Text(labels[i],
                       style: TextStyle(
                           fontSize: 12, color: selected ? Colors.white : null)),
                   selected: selected,
                   selectedColor: Theme.of(context).colorScheme.primary,
                   onSelected: (_) {
-                    _statusFilter = opt['value'];
+                    _statusFilter = value;
                     _load();
                   },
                 );
@@ -115,7 +126,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                             .onSurface
                             .withValues(alpha: 0.3)),
                     const SizedBox(height: 12),
-                    const Text('কোনো অর্ডার পাওয়া যায়নি'),
+                    Text(l.noOrdersFound),
                   ],
                 ),
               ),
@@ -174,7 +185,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
               _load();
             },
             icon: const Icon(Icons.add_rounded),
-            label: const Text('নতুন অর্ডার'),
+            label: Text(l.newOrder),
           ),
         ],
       ),
@@ -198,17 +209,17 @@ class _OrderTile extends StatelessWidget {
     'returned': Colors.purple,
   };
 
-  static const _statusLabel = {
-    'pending': 'অপেক্ষারত',
-    'processing': 'প্রক্রিয়াকরণ',
-    'shipped': 'পাঠানো হয়েছে',
-    'delivered': 'ডেলিভারি হয়েছে',
-    'cancelled': 'বাতিল',
-    'returned': 'ফেরত',
-  };
-
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
+    final statusLabel = {
+      'pending': l.statusPending,
+      'processing': l.statusProcessing,
+      'shipped': l.statusShipped,
+      'delivered': l.statusDelivered,
+      'cancelled': l.statusCancelled,
+      'returned': l.statusReturned,
+    };
     final st = order['order_status'] ?? 'pending';
     final color = _statusColor[st] ?? Colors.grey;
     final theme = Theme.of(context);
@@ -263,7 +274,7 @@ class _OrderTile extends StatelessWidget {
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
-                      _statusLabel[st] ?? st,
+                      statusLabel[st] ?? st,
                       style: TextStyle(
                           color: color,
                           fontSize: 11,

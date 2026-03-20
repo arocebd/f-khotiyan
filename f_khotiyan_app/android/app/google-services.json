@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "93374871738",
+    "project_id": "f-khotiyan",
+    "storage_bucket": "f-khotiyan.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:93374871738:android:22f3eae62934215c4a6a83",
+        "android_client_info": {
+          "package_name": "com.arocebd.fkhotiyan"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBo34Z01bvkiCRy3p_BFRNPQ3sJ1Dcu-UA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

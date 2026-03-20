@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
+import '../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 
@@ -58,6 +59,7 @@ class _ProductsScreenState extends State<ProductsScreen>
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
     final filtered = _tabCtrl.index == 1
         ? _products.where((p) {
@@ -69,12 +71,12 @@ class _ProductsScreenState extends State<ProductsScreen>
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('স্টক ম্যানেজমেন্ট'),
+        title: Text(l.productsTitle),
         bottom: TabBar(
           controller: _tabCtrl,
-          tabs: const [
-            Tab(text: 'সব পণ্য'),
-            Tab(text: 'কম স্টক'),
+          tabs: [
+            Tab(text: l.all),
+            Tab(text: l.lowStock),
           ],
         ),
         actions: [
@@ -91,7 +93,7 @@ class _ProductsScreenState extends State<ProductsScreen>
                 _load();
               },
               decoration: InputDecoration(
-                hintText: 'পণ্য খুঁজুন...',
+                hintText: l.search,
                 prefixIcon: const Icon(Icons.search),
                 border:
                     OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
@@ -112,7 +114,7 @@ class _ProductsScreenState extends State<ProductsScreen>
                         color:
                             theme.colorScheme.onSurface.withValues(alpha: 0.3)),
                     const SizedBox(height: 12),
-                    const Text('কোনো পণ্য পাওয়া যায়নি'),
+                    Text(l.noProductsFound),
                   ],
                 ),
               ),
@@ -134,7 +136,7 @@ class _ProductsScreenState extends State<ProductsScreen>
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showProductForm(context),
         icon: const Icon(Icons.add),
-        label: const Text('নতুন পণ্য'),
+        label: Text(l.newProductBtn),
       ),
     );
   }
@@ -162,6 +164,7 @@ class _ProductCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
     final qty = (product['quantity'] as num?) ?? 0;
     final reorder = (product['reorder_level'] as num?) ?? 10;
@@ -243,7 +246,7 @@ class _ProductCard extends StatelessWidget {
                 fontSize: 13,
               ),
             ),
-            const Text('মার্জিন', style: TextStyle(fontSize: 10)),
+            Text(l.marginLabel, style: const TextStyle(fontSize: 10)),
           ],
         ),
         onTap: () => _showEdit(context),
@@ -376,7 +379,7 @@ class _ProductFormSheetState extends State<_ProductFormSheet> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('ত্রুটি: $e'), backgroundColor: Colors.red));
+            SnackBar(content: Text('${AppLocalizations.of(context)!.errorPrefix}: $e'), backgroundColor: Colors.red));
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -398,21 +401,25 @@ class _ProductFormSheetState extends State<_ProductFormSheet> {
     final navigator = Navigator.of(context);
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('পণ্য মুছবেন?'),
-        content: Text('${widget.existing!['product_name']} মুছে ফেলা হবে।'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('বাতিল')),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('মুছুন', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
+      builder: (ctx) {
+        final dl = AppLocalizations.of(ctx)!;
+        return AlertDialog(
+          title: Text(dl.deleteProductTitle),
+          content: Text('${widget.existing!['product_name']} মুছে ফেলা হবে।'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: Text(dl.cancel)),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              child: Text(dl.deleteBtn, style: const TextStyle(color: Colors.white)),
+            ),
+          ],
+        );
+      },
     );
+    if (ok != true) return;
     if (ok != true) return;
     await auth.callWithAutoRefresh(
       (token) => _api.deleteProduct(token, widget.existing!['id']),
@@ -423,6 +430,7 @@ class _ProductFormSheetState extends State<_ProductFormSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     return Padding(
       padding:
           EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
@@ -460,7 +468,7 @@ class _ProductFormSheetState extends State<_ProductFormSheet> {
                     child: TextButton.icon(
                       onPressed: _pickImage,
                       icon: const Icon(Icons.photo_library_outlined),
-                      label: const Text('ছবি যোগ (ঐচ্ছিক)'),
+                      label: Text(l.addImageOptional),
                     ),
                   ),
                 ],
@@ -537,10 +545,7 @@ class _ProductFormSheetState extends State<_ProductFormSheet> {
                           width: 20,
                           height: 20,
                           child: CircularProgressIndicator(strokeWidth: 2))
-                      : Text(
-                          widget.existing == null
-                              ? 'পণ্য যোগ করুন'
-                              : 'আপডেট করুন',
+                      : Text(l.save,
                           style: const TextStyle(fontWeight: FontWeight.w700)),
                 ),
               ),

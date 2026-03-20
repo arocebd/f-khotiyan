@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
+import '../l10n/app_localizations.dart';
 
 class CourierConfigScreen extends StatefulWidget {
   const CourierConfigScreen({super.key});
@@ -424,9 +425,10 @@ class _CourierConfigScreenState extends State<CourierConfigScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('কুরিয়ার কনফিগারেশন'),
+        title: Text(l.courierConfigTitle),
         actions: [
           IconButton(
             icon: _checkingBalance
@@ -541,7 +543,7 @@ class _CourierConfigScreenState extends State<CourierConfigScreen> {
                                       .onSurface
                                       .withValues(alpha: 0.3)),
                               const SizedBox(height: 12),
-                              const Text('কোনো কনফিগ নেই'),
+                              Text(l.noData),
                               const SizedBox(height: 12),
                               ElevatedButton(
                                 onPressed: _openForm,

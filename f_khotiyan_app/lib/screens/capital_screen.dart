@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
+import '../l10n/app_localizations.dart';
 
 class CapitalScreen extends StatefulWidget {
   const CapitalScreen({super.key});
@@ -172,10 +173,11 @@ class _CapitalScreenState extends State<CapitalScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     final isPositive = _net >= 0;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('মূলধন বিনিয়োগ'),
+        title: Text(l.capitalTitle),
         actions: [
           IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
         ],
@@ -234,7 +236,7 @@ class _CapitalScreenState extends State<CapitalScreen> {
                             .onSurface
                             .withValues(alpha: 0.3)),
                     const SizedBox(height: 12),
-                    const Text('কোনো বিনিয়োগ পাওয়া যায়নি'),
+                    Text(l.noData),
                   ],
                 ),
               ),

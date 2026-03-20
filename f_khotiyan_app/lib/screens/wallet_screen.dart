@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 
@@ -48,9 +49,10 @@ class _WalletScreenState extends State<WalletScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('ওয়ালেট')),
+      appBar: AppBar(title: Text(l.walletTitle)),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
@@ -65,7 +67,7 @@ class _WalletScreenState extends State<WalletScreen> {
                       padding: const EdgeInsets.all(20),
                       child: Column(
                         children: [
-                          Text('ওয়ালেট ব্যালেন্স',
+                          Text(l.walletBalance,
                               style: theme.textTheme.titleSmall?.copyWith(
                                   color: Colors.white.withValues(alpha: 0.8))),
                           const SizedBox(height: 8),
@@ -79,16 +81,16 @@ class _WalletScreenState extends State<WalletScreen> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                             children: [
-                              const _InfoChip(
-                                  label: 'SMS প্রতি',
+                              _InfoChip(
+                                  label: l.smsPer,
                                   value: '৳0.45',
                                   icon: Icons.sms_rounded),
-                              const _InfoChip(
-                                  label: 'AI প্রতি',
+                              _InfoChip(
+                                  label: l.aiPer,
                                   value: '৳0.10+',
                                   icon: Icons.auto_awesome_rounded),
                               _InfoChip(
-                                  label: 'AI ফ্রি',
+                                  label: l.aiFreeLabel,
                                   value:
                                       '${_data?['ai_free_uses_remaining'] ?? 0}টি',
                                   icon: Icons.star_rounded),
@@ -102,12 +104,12 @@ class _WalletScreenState extends State<WalletScreen> {
                   ElevatedButton.icon(
                     onPressed: _openTopup,
                     icon: const Icon(Icons.add_circle_rounded),
-                    label: const Text('ওয়ালেট রিচার্জ করুন'),
+                    label: Text(l.rechargeWallet),
                     style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 14)),
                   ),
                   const SizedBox(height: 20),
-                  Text('লেনদেনের ইতিহাস',
+                  Text(l.transactionHistory,
                       style: theme.textTheme.titleMedium
                           ?.copyWith(fontWeight: FontWeight.w700)),
                   const SizedBox(height: 10),
@@ -143,11 +145,11 @@ class _WalletScreenState extends State<WalletScreen> {
                     );
                   }),
                   if ((_data?['transactions'] as List? ?? []).isEmpty)
-                    const Center(
+                    Center(
                       child: Padding(
-                        padding: EdgeInsets.all(32),
-                        child: Text('কোনো লেনদেন নেই',
-                            style: TextStyle(color: Colors.grey)),
+                        padding: const EdgeInsets.all(32),
+                        child: Text(l.noTransactions,
+                            style: const TextStyle(color: Colors.grey)),
                       ),
                     ),
                 ],
@@ -221,12 +223,12 @@ class _TopupSheetState extends State<_TopupSheet> {
     final amount = double.tryParse(_amountCtrl.text.trim());
     if (amount == null || amount < 10) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('সর্বনিম্ন রিচার্জ ৳10')));
+          .showSnackBar(SnackBar(content: Text(AppLocalizations.of(context)!.minRecharge10)));
       return;
     }
     if (_txnCtrl.text.trim().isEmpty) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('ট্রানজেকশন আইডি দিন')));
+          .showSnackBar(SnackBar(content: Text(AppLocalizations.of(context)!.enterTxnId)));
       return;
     }
     setState(() => _submitting = true);
@@ -239,14 +241,13 @@ class _TopupSheetState extends State<_TopupSheet> {
       if (mounted) {
         Navigator.pop(context);
         widget.onSuccess();
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text(
-                'রিচার্জ অনুরোধ জমা হয়েছে। অ্যাডমিন যাচাইয়ের পর ব্যালেন্স যোগ হবে।')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(AppLocalizations.of(context)!.rechargeSubmitted)));
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('ত্রুটি: $e')));
+            .showSnackBar(SnackBar(content: Text('${AppLocalizations.of(context)!.errorPrefix}: $e')));
       }
     } finally {
       if (mounted) setState(() => _submitting = false);
@@ -263,6 +264,7 @@ class _TopupSheetState extends State<_TopupSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     return Padding(
       padding: EdgeInsets.only(
           left: 16,
@@ -273,15 +275,15 @@ class _TopupSheetState extends State<_TopupSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('ওয়ালেট রিচার্জ',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+          Text(l.walletRechargeTitle,
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
           const SizedBox(height: 16),
           // Payment method
           DropdownButtonFormField<String>(
             initialValue: _method,
-            decoration: const InputDecoration(
-                labelText: 'পেমেন্ট পদ্ধতি',
-                border: OutlineInputBorder(),
+            decoration: InputDecoration(
+                labelText: l.paymentMethod,
+                border: const OutlineInputBorder(),
                 isDense: true),
             items: _methods
                 .map((m) => DropdownMenuItem(
@@ -305,7 +307,7 @@ class _TopupSheetState extends State<_TopupSheet> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'পাঠান: ${_paymentNumbers[_method]}',
+                    '${l.sendTo}: ${_paymentNumbers[_method]}',
                     style: const TextStyle(fontSize: 13, color: Colors.blue),
                   ),
                 ),
@@ -316,9 +318,9 @@ class _TopupSheetState extends State<_TopupSheet> {
           TextField(
             controller: _amountCtrl,
             keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-                labelText: 'পরিমাণ (৳)',
-                border: OutlineInputBorder(),
+            decoration: InputDecoration(
+                labelText: l.amountLabel,
+                border: const OutlineInputBorder(),
                 isDense: true,
                 prefixText: '৳ '),
           ),
@@ -326,17 +328,17 @@ class _TopupSheetState extends State<_TopupSheet> {
           TextField(
             controller: _senderCtrl,
             keyboardType: TextInputType.phone,
-            decoration: const InputDecoration(
-                labelText: 'প্রেরকের নম্বর',
-                border: OutlineInputBorder(),
+            decoration: InputDecoration(
+                labelText: l.senderNumberLabel,
+                border: const OutlineInputBorder(),
                 isDense: true),
           ),
           const SizedBox(height: 10),
           TextField(
             controller: _txnCtrl,
-            decoration: const InputDecoration(
-                labelText: 'ট্রানজেকশন আইডি',
-                border: OutlineInputBorder(),
+            decoration: InputDecoration(
+                labelText: l.transactionIdLabel,
+                border: const OutlineInputBorder(),
                 isDense: true),
           ),
           const SizedBox(height: 16),
@@ -350,7 +352,7 @@ class _TopupSheetState extends State<_TopupSheet> {
                       height: 20,
                       child: CircularProgressIndicator(
                           strokeWidth: 2, color: Colors.white))
-                  : const Text('অনুরোধ পাঠান'),
+                  : Text(l.sendRequest),
             ),
           ),
         ],

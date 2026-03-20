@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
+import '../l10n/app_localizations.dart';
 
 class ExpenseScreen extends StatefulWidget {
   const ExpenseScreen({super.key});
@@ -192,9 +193,10 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('খরচ ব্যবস্থাপনা'),
+        title: Text(l.expenseTitle),
         actions: [
           IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
         ],
@@ -264,7 +266,7 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
                             .onSurface
                             .withValues(alpha: 0.3)),
                     const SizedBox(height: 12),
-                    const Text('কোনো খরচ পাওয়া যায়নি'),
+                    Text(l.noData),
                   ],
                 ),
               ),

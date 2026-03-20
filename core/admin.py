@@ -277,6 +277,18 @@ class SubscriptionPurchaseAdmin(admin.ModelAdmin):
     actions = ['approve_selected', 'reject_selected']
     ordering = ['-created_at']
 
+    def save_model(self, request, obj, form, change):
+        """When status is manually changed to 'approved', run full approve() logic."""
+        if change and obj.status == 'approved' and 'status' in form.changed_data:
+            try:
+                old_status = SubscriptionPurchase.objects.get(pk=obj.pk).status
+            except SubscriptionPurchase.DoesNotExist:
+                old_status = None
+            if old_status and old_status != 'approved':
+                obj.approve()
+                return
+        super().save_model(request, obj, form, change)
+
     def approve_selected(self, request, queryset):
         for purchase in queryset.filter(status='pending'):
             purchase.approve()

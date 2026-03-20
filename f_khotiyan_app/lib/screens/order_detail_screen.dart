@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/ad_service.dart';
+import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import '../services/invoice_service.dart';
 import 'order_tracking_screen.dart';
@@ -497,9 +498,10 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
-        title: Text(_order?['order_number'] ?? 'অর্ডার বিবরণ'),
+        title: Text(_order?['order_number'] ?? l.orderDetailTitle),
         actions: [
           if (_order?['order_status'] == 'pending')
             IconButton(

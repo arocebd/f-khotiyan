@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
+import '../services/firebase_service.dart';
 
 /// Provider for managing authentication state
 class AuthProvider with ChangeNotifier {
@@ -43,6 +44,15 @@ class AuthProvider with ChangeNotifier {
     _phoneNumber = prefs.getString(_phoneKey);
     _businessName = prefs.getString(_businessNameKey);
     _ownerName = prefs.getString(_ownerNameKey);
+
+    // Load cached profile from Firestore (fast, offline-capable)
+    if (_accessToken != null) {
+      final firebaseProfile = await FirebaseService.getProfile();
+      if (firebaseProfile != null) {
+        _userData = firebaseProfile;
+      }
+    }
+
     notifyListeners();
   }
 
@@ -79,6 +89,14 @@ class AuthProvider with ChangeNotifier {
           businessName: response['user']['business_name'] ?? '',
           ownerName: response['user']['owner_name'] ?? '',
         );
+
+        // Mirror registration to Firebase (silent fail)
+        await FirebaseService.register(phone, password);
+
+        // Sync user profile to Firestore
+        if (_userData != null) {
+          await FirebaseService.syncProfile(_userData!);
+        }
       }
 
       _isLoading = false;
@@ -117,6 +135,14 @@ class AuthProvider with ChangeNotifier {
           businessName: response['user']['business_name'] ?? '',
           ownerName: response['user']['owner_name'] ?? '',
         );
+
+        // Mirror login to Firebase (silent fail — VPS login already succeeded)
+        await FirebaseService.signIn(phone, password);
+
+        // Sync user profile to Firestore in background
+        if (_userData != null) {
+          await FirebaseService.syncProfile(_userData!);
+        }
       }
 
       _isLoading = false;
@@ -183,8 +209,25 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
+  /// Update cached user data and notify listeners.
+  /// Called when a fresh profile is fetched from the backend.
+  Future<void> setUserData(Map<String, dynamic>? data) async {
+    if (data == null) return;
+    _userData = data;
+    _businessName = data['business_name'] as String? ?? _businessName;
+    _ownerName = data['owner_name'] as String? ?? _ownerName;
+    // Persist some visible fields so UI has stable fallback after restart
+    final prefs = await SharedPreferences.getInstance();
+    if (_businessName != null) {
+      await prefs.setString(_businessNameKey, _businessName!);
+    }
+    if (_ownerName != null) await prefs.setString(_ownerNameKey, _ownerName!);
+    notifyListeners();
+  }
+
   /// Logout user
   Future<void> logout() async {
+    await FirebaseService.signOut();
     await _clearAuthData();
     notifyListeners();
   }

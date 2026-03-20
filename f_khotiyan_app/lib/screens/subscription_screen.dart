@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 
@@ -60,13 +61,14 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
     final isPremium = _walletData?['is_premium'] == true;
     final subType = _walletData?['subscription_type'] ?? '';
     final subEnd = _walletData?['subscription_end_date'] ?? '';
 
     return Scaffold(
-      appBar: AppBar(title: const Text('প্রিমিয়াম সাবস্ক্রিপশন')),
+      appBar: AppBar(title: Text(l.subscriptionTitle)),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
@@ -96,14 +98,14 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                                           fontSize: 16)),
                                   Text(
                                       subType == 'monthly'
-                                          ? 'মাসিক প্ল্যান'
-                                          : 'বার্ষিক প্ল্যান',
+                                          ? l.monthlyPlan
+                                          : l.yearlyPlan,
                                       style: TextStyle(
                                           color: Colors.white
                                               .withValues(alpha: 0.85),
                                           fontSize: 13)),
                                   if (subEnd.isNotEmpty)
-                                    Text('মেয়াদ: $subEnd',
+                                    Text('${l.validityLabel}: $subEnd',
                                         style: TextStyle(
                                             color: Colors.white
                                                 .withValues(alpha: 0.75),
@@ -135,13 +137,13 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                       ),
                     ),
                   const SizedBox(height: 20),
-                  Text('প্ল্যান বেছে নিন',
+                  Text(l.choosePlan,
                       style: theme.textTheme.titleMedium
                           ?.copyWith(fontWeight: FontWeight.w700)),
                   const SizedBox(height: 12),
                   // Monthly plan card
                   _PlanCard(
-                    title: 'মাসিক প্ল্যান',
+                    title: l.monthlyPlan,
                     price: '৳200',
                     period: '/মাস',
                     features: const [
@@ -152,12 +154,12 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                     color: Colors.blue,
                     icon: Icons.calendar_month_rounded,
                     onBuy: () =>
-                        _buyPlan('monthly', 200, 'মাসিক প্ল্যান (৳200)'),
+                        _buyPlan('monthly', 200, '${l.monthlyPlan} (৳200)'),
                   ),
                   const SizedBox(height: 12),
                   // Yearly plan card
                   _PlanCard(
-                    title: 'বার্ষিক প্ল্যান',
+                    title: l.yearlyPlan,
                     price: '৳1099',
                     period: '/বছর',
                     features: const [
@@ -170,10 +172,10 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                     icon: Icons.workspace_premium_rounded,
                     badge: 'সেরা মূল্য',
                     onBuy: () =>
-                        _buyPlan('yearly', 1099, 'বার্ষিক প্ল্যান (৳1099)'),
+                        _buyPlan('yearly', 1099, '${l.yearlyPlan} (৳1099)'),
                   ),
                   const SizedBox(height: 24),
-                  Text('ক্রয়ের ইতিহাস',
+                  Text(l.purchaseHistory,
                       style: theme.textTheme.titleMedium
                           ?.copyWith(fontWeight: FontWeight.w700)),
                   const SizedBox(height: 10),
@@ -221,11 +223,11 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                     );
                   }),
                   if (_history.isEmpty)
-                    const Center(
+                    Center(
                       child: Padding(
-                        padding: EdgeInsets.all(32),
-                        child: Text('কোনো ক্রয়ের ইতিহাস নেই',
-                            style: TextStyle(color: Colors.grey)),
+                        padding: const EdgeInsets.all(32),
+                        child: Text(l.noPurchaseHistory,
+                            style: const TextStyle(color: Colors.grey)),
                       ),
                     ),
                 ],
@@ -389,7 +391,7 @@ class _PurchaseSheetState extends State<_PurchaseSheet> {
   Future<void> _submit() async {
     if (_txnCtrl.text.trim().isEmpty) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('ট্রানজেকশন আইডি দিন')));
+          .showSnackBar(SnackBar(content: Text(AppLocalizations.of(context)!.enterTxnId)));
       return;
     }
     setState(() => _submitting = true);
@@ -402,14 +404,13 @@ class _PurchaseSheetState extends State<_PurchaseSheet> {
       if (mounted) {
         Navigator.pop(context);
         widget.onSuccess();
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text(
-                'পেমেন্ট অনুরোধ জমা হয়েছে। অ্যাডমিন যাচাইয়ের পর সক্রিয় হবে।')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(AppLocalizations.of(context)!.rechargeSubmitted)));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('ত্রুটি: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('${AppLocalizations.of(context)!.errorPrefix}: $e')));
       }
     } finally {
       if (mounted) setState(() => _submitting = false);
@@ -425,6 +426,7 @@ class _PurchaseSheetState extends State<_PurchaseSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     return Padding(
       padding: EdgeInsets.only(
           left: 16,
@@ -435,17 +437,17 @@ class _PurchaseSheetState extends State<_PurchaseSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('সাবস্ক্রিপশন ক্রয়',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+          Text(l.subscriptionPurchaseTitle,
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
           const SizedBox(height: 4),
           Text(widget.planLabel,
               style: const TextStyle(fontSize: 13, color: Colors.grey)),
           const SizedBox(height: 14),
           DropdownButtonFormField<String>(
             initialValue: _method,
-            decoration: const InputDecoration(
-                labelText: 'পেমেন্ট পদ্ধতি',
-                border: OutlineInputBorder(),
+            decoration: InputDecoration(
+                labelText: l.paymentMethod,
+                border: const OutlineInputBorder(),
                 isDense: true),
             items: _methods
                 .map((m) => DropdownMenuItem(
@@ -479,17 +481,17 @@ class _PurchaseSheetState extends State<_PurchaseSheet> {
           TextField(
             controller: _senderCtrl,
             keyboardType: TextInputType.phone,
-            decoration: const InputDecoration(
-                labelText: 'প্রেরকের নম্বর',
-                border: OutlineInputBorder(),
+            decoration: InputDecoration(
+                labelText: l.senderNumberLabel,
+                border: const OutlineInputBorder(),
                 isDense: true),
           ),
           const SizedBox(height: 10),
           TextField(
             controller: _txnCtrl,
-            decoration: const InputDecoration(
-                labelText: 'ট্রানজেকশন আইডি',
-                border: OutlineInputBorder(),
+            decoration: InputDecoration(
+                labelText: l.transactionIdLabel,
+                border: const OutlineInputBorder(),
                 isDense: true),
           ),
           const SizedBox(height: 16),
@@ -503,7 +505,7 @@ class _PurchaseSheetState extends State<_PurchaseSheet> {
                       height: 20,
                       child: CircularProgressIndicator(
                           strokeWidth: 2, color: Colors.white))
-                  : const Text('অনুরোধ জমা দিন'),
+                  : Text(l.submitRequest),
             ),
           ),
         ],
