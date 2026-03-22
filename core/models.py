@@ -162,12 +162,18 @@ class User(AbstractUser):
         help_text=_("Registered sender ID on bulksmsbd.net")
     )
 
-    # AI free uses remaining (resets to 0 after first use beyond limit)
+    # AI free uses per day (resets to 3 each new day)
     ai_free_uses_remaining = models.IntegerField(
         default=3,
         validators=[MinValueValidator(0)],
-        verbose_name=_("AI Free Uses Remaining"),
-        help_text=_("Free AI order creation uses remaining")
+        verbose_name=_("AI Free Uses Remaining Today"),
+        help_text=_("Free AI order creation uses remaining today (resets daily)")
+    )
+    last_ai_date = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name=_("Last AI Use Date"),
+        help_text=_("Date when AI free uses were last reset")
     )
     
     # Daily Order Limit Tracking (for free users)

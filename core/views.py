@@ -154,12 +154,20 @@ def extract_order_from_message(request):
     """
     user = request.user
 
-    # AI billing: 3 free uses, then deduct from wallet
+    # AI billing: 3 free uses PER DAY, then deduct from wallet
     # Gemini Flash rates converted to BDT (≈120 BDT/USD):
     # Input: $0.075/1M tokens → 0.009 BDT/1K tokens
     # Output: $0.30/1M tokens → 0.036 BDT/1K tokens
     # Minimum charge per request: ৳0.10
     AI_MIN_COST = 0.10  # BDT, minimum per request
+    AI_FREE_PER_DAY = 3
+
+    # Reset daily free uses at start of new day
+    today = timezone.now().date()
+    if user.last_ai_date != today:
+        user.ai_free_uses_remaining = AI_FREE_PER_DAY
+        user.last_ai_date = today
+        user.save(update_fields=['ai_free_uses_remaining', 'last_ai_date'])
 
     if user.ai_free_uses_remaining > 0:
         # Consume a free use
@@ -2043,147 +2051,6 @@ def dashboard_stats(request):
         },
         'recent_orders': recent_orders,
     })
-
-
-# ==================== WALLET & SUBSCRIPTION VIEWS ====================
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def wallet_info(request):
-    """GET /api/wallet/ - wallet balance + recent transactions"""
-    user = request.user
-    transactions = WalletTransaction.objects.filter(user=user).order_by('-created_at')[:50]
-    txn_data = [
-        {
-            'id': t.id,
-            'type': t.transaction_type,
-            'type_display': t.get_transaction_type_display(),
-            'amount': float(t.amount),
-            'balance_after': float(t.balance_after),
-            'description': t.description,
-            'reference': t.reference,
-            'created_at': t.created_at.strftime('%Y-%m-%d %H:%M'),
-        }
-        for t in transactions
-    ]
-    return Response({
-        'success': True,
-        'wallet_balance': float(user.wallet_balance),
-        'is_premium': user.is_premium,
-        'subscription_type': user.subscription_type,
-        'subscription_end_date': str(user.subscription_end_date) if user.subscription_end_date else None,
-        'ai_free_uses_remaining': user.ai_free_uses_remaining,
-        'transactions': txn_data,
-    })
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def request_topup(request):
-    """
-    POST /api/wallet/topup/
-    Body: { amount, payment_method, transaction_id, sender_number }
-    Creates a pending top-up request for admin approval.
-    """
-    user = request.user
-    amount = request.data.get('amount')
-    payment_method = request.data.get('payment_method')
-    transaction_id = request.data.get('transaction_id', '').strip()
-    sender_number = request.data.get('sender_number', '').strip()
-
-    if not amount or float(amount) < 10:
-        return Response({'success': False, 'error': 'Minimum top-up is ৳10'}, status=400)
-    if payment_method not in ['bkash', 'nagad', 'rocket', 'bank']:
-        return Response({'success': False, 'error': 'Invalid payment method'}, status=400)
-    if not transaction_id:
-        return Response({'success': False, 'error': 'Transaction ID required'}, status=400)
-
-    # Check for duplicate transaction_id
-    if SubscriptionPurchase.objects.filter(
-        transaction_id=transaction_id, plan__in=['monthly', 'yearly']
-    ).exists():
-        return Response({'success': False, 'error': 'This transaction ID has already been submitted'}, status=400)
-
-    purchase = SubscriptionPurchase.objects.create(
-        user=user,
-        plan='wallet_topup',
-        amount=amount,
-        payment_method=payment_method,
-        transaction_id=transaction_id,
-        sender_number=sender_number,
-        status='pending',
-    )
-    return Response({
-        'success': True,
-        'message': 'Top-up request submitted. Balance will be credited after admin verification (usually within 1 hour).',
-        'request_id': purchase.id,
-    })
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def purchase_subscription(request):
-    """
-    POST /api/subscription/purchase/
-    Body: { plan (monthly/yearly), payment_method, transaction_id, sender_number }
-    """
-    user = request.user
-    plan = request.data.get('plan')
-    payment_method = request.data.get('payment_method')
-    transaction_id = request.data.get('transaction_id', '').strip()
-    sender_number = request.data.get('sender_number', '').strip()
-
-    plan_prices = {'monthly': 200, 'yearly': 1099}
-    if plan not in plan_prices:
-        return Response({'success': False, 'error': 'Invalid plan. Choose monthly or yearly.'}, status=400)
-    if payment_method not in ['bkash', 'nagad', 'rocket', 'bank']:
-        return Response({'success': False, 'error': 'Invalid payment method'}, status=400)
-    if not transaction_id:
-        return Response({'success': False, 'error': 'Transaction ID required'}, status=400)
-    if SubscriptionPurchase.objects.filter(
-        transaction_id=transaction_id, plan__in=['monthly', 'yearly']
-    ).exists():
-        return Response({'success': False, 'error': 'This transaction ID has already been submitted'}, status=400)
-
-    purchase = SubscriptionPurchase.objects.create(
-        user=user,
-        plan=plan,
-        amount=plan_prices[plan],
-        payment_method=payment_method,
-        transaction_id=transaction_id,
-        sender_number=sender_number,
-        status='pending',
-    )
-    return Response({
-        'success': True,
-        'message': f'{plan.capitalize()} subscription request submitted. Will be activated after admin verification.',
-        'request_id': purchase.id,
-        'amount': plan_prices[plan],
-    })
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def purchase_history(request):
-    """GET /api/subscription/history/ - list all purchase requests"""
-    user = request.user
-    purchases = SubscriptionPurchase.objects.filter(
-        user=user, plan__in=['monthly', 'yearly']
-    ).order_by('-created_at')[:20]
-    data = [
-        {
-            'id': p.id,
-            'plan': p.plan,
-            'plan_display': p.get_plan_display(),
-            'amount': float(p.amount),
-            'payment_method': p.get_payment_method_display(),
-            'transaction_id': p.transaction_id,
-            'status': p.status,
-            'created_at': p.created_at.strftime('%Y-%m-%d %H:%M'),
-        }
-        for p in purchases
-    ]
-    return Response({'success': True, 'purchases': data})
 
 
 # ==================== WALLET & SUBSCRIPTION VIEWS ====================
