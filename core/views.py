@@ -173,18 +173,6 @@ def extract_order_from_message(request):
         # Consume a free use
         user.ai_free_uses_remaining -= 1
         user.save(update_fields=['ai_free_uses_remaining'])
-    else:
-        from decimal import Decimal
-        cost = Decimal(str(AI_MIN_COST))
-        if user.wallet_balance < cost:
-            return Response({
-                'success': False,
-                'error': 'insufficient_wallet_balance',
-                'message': f'ওয়ালেট ব্যালেন্স অপর্যাপ্ত। AI অর্ডার তৈরিতে ন্যূনতম ৳{AI_MIN_COST} প্রয়োজন। বর্তমান ব্যালেন্স: ৳{user.wallet_balance}',
-                'wallet_balance': float(user.wallet_balance),
-                'required': AI_MIN_COST,
-                'ai_free_uses_remaining': 0,
-            }, status=status.HTTP_402_PAYMENT_REQUIRED)
 
     # Validate input
     input_serializer = OrderExtractionInputSerializer(data=request.data)
@@ -238,25 +226,6 @@ def extract_order_from_message(request):
         # Validate extracted data
         is_valid, validation_errors = extractor.validate_order_data(extracted_data)
 
-        # Deduct wallet if free uses are exhausted (charge AI cost)
-        from decimal import Decimal
-        ai_cost_charged = Decimal('0')
-        if user.ai_free_uses_remaining == 0:
-            # We already decremented to 0 before the call; charge now
-            # Use flat rate: 0.10 BDT minimum per request
-            cost = Decimal(str(AI_MIN_COST))
-            if user.wallet_balance >= cost:
-                user.wallet_balance -= cost
-                user.save(update_fields=['wallet_balance'])
-                ai_cost_charged = cost
-                WalletTransaction.objects.create(
-                    user=user,
-                    transaction_type='ai',
-                    amount=-cost,
-                    balance_after=user.wallet_balance,
-                    description='AI Order Extraction',
-                )
-
         # Return extracted data even if validation has issues
         # Flutter app can let user correct the data
         return Response({
@@ -266,8 +235,6 @@ def extract_order_from_message(request):
             'validation_errors': validation_errors,
             'message': 'Order data extracted successfully. Please review and confirm.' if is_valid else 'Please review and correct the highlighted fields.',
             'ai_free_uses_remaining': user.ai_free_uses_remaining,
-            'wallet_balance': float(user.wallet_balance),
-            'ai_cost_charged': float(ai_cost_charged),
         }, status=status.HTTP_200_OK)
     
     except ValueError as e:
@@ -439,7 +406,6 @@ def order_limit_info(request):
         'daily_order_count': user.daily_order_count,
         'daily_order_limit': user.daily_order_limit,
         'can_create_order': user.can_create_order(),
-        'subscription_type': user.subscription_type,
         'orders_remaining': orders_remaining
     }
     
@@ -1031,17 +997,6 @@ def send_order_sms(request, order_id):
     parts = sms_info['parts']
     cost = calculate_cost(parts)
 
-    # Check wallet balance
-    if user.wallet_balance < cost:
-        return Response({
-            'success': False,
-            'error': 'insufficient_wallet_balance',
-            'message': f'ওয়ালেট ব্যালেন্স অপর্যাপ্ত। {parts}টি SMS পার্টের জন্য ৳{cost} প্রয়োজন। বর্তমান ব্যালেন্স: ৳{user.wallet_balance}',
-            'wallet_balance': float(user.wallet_balance),
-            'required': float(cost),
-            'parts': parts,
-        }, status=status.HTTP_402_PAYMENT_REQUIRED)
-
     # Create log entry (pending)
     log = SMSLog.objects.create(
         user=user,
@@ -1063,19 +1018,6 @@ def send_order_sms(request, order_id):
         log.api_response = result['response']
         log.save(update_fields=['status', 'api_response'])
 
-        # Deduct wallet
-        user.wallet_balance = max(Decimal('0'), user.wallet_balance - cost)
-        user.save(update_fields=['wallet_balance'])
-
-        WalletTransaction.objects.create(
-            user=user,
-            transaction_type='sms',
-            amount=-cost,
-            balance_after=user.wallet_balance,
-            description=f'SMS ({parts} part{"s" if parts > 1 else ""}) to {order.customer_phone} — Order #{order.order_number}',
-            reference=str(order.id),
-        )
-
         order.sms_sent = True
         order.save(update_fields=['sms_sent'])
 
@@ -1085,7 +1027,6 @@ def send_order_sms(request, order_id):
             'sms_parts': parts,
             'cost': float(cost),
             'encoding': sms_info['encoding'],
-            'wallet_balance': float(user.wallet_balance),
         })
     else:
         log.status = 'failed'
@@ -1116,7 +1057,6 @@ def send_bulk_sms(request):
       "order_ids": [1, 2, 3]   // optional – links log to orders
     }
     """
-    from decimal import Decimal
     from core.sms_service import count_sms_parts, calculate_cost, send_sms
 
     user = request.user
@@ -1131,24 +1071,6 @@ def send_bulk_sms(request):
         return Response({'success': False, 'error': 'message is required'},
                         status=status.HTTP_400_BAD_REQUEST)
 
-    # Pre-calculate total cost using first recipient's message as representative
-    sample_msg = message_template.replace('{name}', recipients[0].get('name', ''))
-    sms_info = count_sms_parts(sample_msg)
-    parts_per_sms = sms_info['parts']
-    cost_per_sms = calculate_cost(parts_per_sms)
-    total_cost = cost_per_sms * len(recipients)
-
-    if user.wallet_balance < total_cost:
-        return Response({
-            'success': False,
-            'error': 'insufficient_wallet_balance',
-            'message': f'{len(recipients)} জনকে SMS পাঠাতে ৳{total_cost} প্রয়োজন। বর্তমান ব্যালেন্স: ৳{user.wallet_balance}',
-            'wallet_balance': float(user.wallet_balance),
-            'required': float(total_cost),
-            'count': len(recipients),
-            'parts_per_sms': parts_per_sms,
-        }, status=status.HTTP_402_PAYMENT_REQUIRED)
-
     # Map order IDs to Order objects
     order_map = {}
     if order_ids:
@@ -1158,7 +1080,6 @@ def send_bulk_sms(request):
     sender_id = user.sms_sender_id or None
     sent_count = 0
     failed_count = 0
-    total_deducted = Decimal('0')
 
     for i, recipient in enumerate(recipients):
         phone = recipient.get('phone', '').strip()
@@ -1193,18 +1114,6 @@ def send_bulk_sms(request):
             log.api_response = result['response']
             log.save(update_fields=['status', 'api_response'])
 
-            user.wallet_balance = max(Decimal('0'), user.wallet_balance - cost)
-            user.save(update_fields=['wallet_balance'])
-            total_deducted += cost
-
-            WalletTransaction.objects.create(
-                user=user,
-                transaction_type='sms',
-                amount=-cost,
-                balance_after=user.wallet_balance,
-                description=f'Bulk SMS to {phone}',
-                reference=order_id_key or f'bulk_{i}',
-            )
             sent_count += 1
         else:
             log.status = 'failed'
@@ -1218,8 +1127,6 @@ def send_bulk_sms(request):
         'sent': sent_count,
         'failed': failed_count,
         'total': len(recipients),
-        'total_cost': float(total_deducted),
-        'wallet_balance': float(user.wallet_balance),
         'message': f'{sent_count}টি SMS সফলভাবে পাঠানো হয়েছে।',
     })
 
@@ -2043,152 +1950,8 @@ def dashboard_stats(request):
             'total_customers': total_customers,
             'total_products': total_products,
             'sms_balance': user.sms_balance,
-            'wallet_balance': float(user.wallet_balance),
             'is_premium': user.is_premium,
             'ai_free_uses_remaining': user.ai_free_uses_remaining,
-            'subscription_type': user.subscription_type,
-            'subscription_end_date': str(user.subscription_end_date) if user.subscription_end_date else None,
         },
         'recent_orders': recent_orders,
     })
-
-
-# ==================== WALLET & SUBSCRIPTION VIEWS ====================
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def wallet_info(request):
-    """GET /api/wallet/ - wallet balance + recent transactions"""
-    user = request.user
-    transactions = WalletTransaction.objects.filter(user=user).order_by('-created_at')[:50]
-    txn_data = [
-        {
-            'id': t.id,
-            'type': t.transaction_type,
-            'type_display': t.get_transaction_type_display(),
-            'amount': float(t.amount),
-            'balance_after': float(t.balance_after),
-            'description': t.description,
-            'reference': t.reference,
-            'created_at': t.created_at.strftime('%Y-%m-%d %H:%M'),
-        }
-        for t in transactions
-    ]
-    return Response({
-        'success': True,
-        'wallet_balance': float(user.wallet_balance),
-        'is_premium': user.is_premium,
-        'subscription_type': user.subscription_type,
-        'subscription_end_date': str(user.subscription_end_date) if user.subscription_end_date else None,
-        'ai_free_uses_remaining': user.ai_free_uses_remaining,
-        'transactions': txn_data,
-    })
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def request_topup(request):
-    """
-    POST /api/wallet/topup/
-    Body: { amount, payment_method, transaction_id, sender_number }
-    Creates a pending top-up request for admin approval.
-    """
-    user = request.user
-    amount = request.data.get('amount')
-    payment_method = request.data.get('payment_method')
-    transaction_id = request.data.get('transaction_id', '').strip()
-    sender_number = request.data.get('sender_number', '').strip()
-
-    if not amount or float(amount) < 10:
-        return Response({'success': False, 'error': 'Minimum top-up is ৳10'}, status=400)
-    if payment_method not in ['bkash', 'nagad', 'rocket', 'bank']:
-        return Response({'success': False, 'error': 'Invalid payment method'}, status=400)
-    if not transaction_id:
-        return Response({'success': False, 'error': 'Transaction ID required'}, status=400)
-
-    # Check for duplicate transaction_id
-    if SubscriptionPurchase.objects.filter(
-        transaction_id=transaction_id, plan__in=['monthly', 'yearly']
-    ).exists():
-        return Response({'success': False, 'error': 'This transaction ID has already been submitted'}, status=400)
-
-    purchase = SubscriptionPurchase.objects.create(
-        user=user,
-        plan='wallet_topup',
-        amount=amount,
-        payment_method=payment_method,
-        transaction_id=transaction_id,
-        sender_number=sender_number,
-        status='pending',
-    )
-    return Response({
-        'success': True,
-        'message': 'Top-up request submitted. Balance will be credited after admin verification (usually within 1 hour).',
-        'request_id': purchase.id,
-    })
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def purchase_subscription(request):
-    """
-    POST /api/subscription/purchase/
-    Body: { plan (monthly/yearly), payment_method, transaction_id, sender_number }
-    """
-    user = request.user
-    plan = request.data.get('plan')
-    payment_method = request.data.get('payment_method')
-    transaction_id = request.data.get('transaction_id', '').strip()
-    sender_number = request.data.get('sender_number', '').strip()
-
-    plan_prices = {'monthly': 200, 'yearly': 1099}
-    if plan not in plan_prices:
-        return Response({'success': False, 'error': 'Invalid plan. Choose monthly or yearly.'}, status=400)
-    if payment_method not in ['bkash', 'nagad', 'rocket', 'bank']:
-        return Response({'success': False, 'error': 'Invalid payment method'}, status=400)
-    if not transaction_id:
-        return Response({'success': False, 'error': 'Transaction ID required'}, status=400)
-    if SubscriptionPurchase.objects.filter(
-        transaction_id=transaction_id, plan__in=['monthly', 'yearly']
-    ).exists():
-        return Response({'success': False, 'error': 'This transaction ID has already been submitted'}, status=400)
-
-    purchase = SubscriptionPurchase.objects.create(
-        user=user,
-        plan=plan,
-        amount=plan_prices[plan],
-        payment_method=payment_method,
-        transaction_id=transaction_id,
-        sender_number=sender_number,
-        status='pending',
-    )
-    return Response({
-        'success': True,
-        'message': f'{plan.capitalize()} subscription request submitted. Will be activated after admin verification.',
-        'request_id': purchase.id,
-        'amount': plan_prices[plan],
-    })
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def purchase_history(request):
-    """GET /api/subscription/history/ - list all purchase requests"""
-    user = request.user
-    purchases = SubscriptionPurchase.objects.filter(
-        user=user, plan__in=['monthly', 'yearly']
-    ).order_by('-created_at')[:20]
-    data = [
-        {
-            'id': p.id,
-            'plan': p.plan,
-            'plan_display': p.get_plan_display(),
-            'amount': float(p.amount),
-            'payment_method': p.get_payment_method_display(),
-            'transaction_id': p.transaction_id,
-            'status': p.status,
-            'created_at': p.created_at.strftime('%Y-%m-%d %H:%M'),
-        }
-        for p in purchases
-    ]
-    return Response({'success': True, 'purchases': data})
